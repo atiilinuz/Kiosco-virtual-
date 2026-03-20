@@ -1,0 +1,1227 @@
+
+import React, { useState, useRef, useMemo } from 'react';
+import { 
+  TrendingUp, Users, DollarSign, Package, BarChart3, 
+  LogOut, FileUp, FileDown, CheckCircle2, AlertCircle, 
+  PlusCircle, Scan, Image as ImageIcon, X, LayoutGrid, 
+  User, Shield, Pencil, Trash2, Upload, Tag, AlignLeft, 
+  Search, List, Layers, Clock, Smartphone, MapPin, Phone, 
+  Download, PieChart, Layout, Mail, ShieldAlert, Key,
+  Barcode, Type, FileText, Camera, Info, HelpCircle, Code2,
+  MessageCircle, ExternalLink, LifeBuoy, Zap, ChevronRight,
+  MonitorSmartphone, Printer, Calculator, Sparkles,
+  FileJson, FileSpreadsheet, ClipboardCheck, MousePointerClick,
+  ArrowRight, ShoppingBag, Table, Trophy, Save, Filter, ArrowUpDown, AlertTriangle,
+  Sun, Moon, Sunrise, Sunset, Database, HardDriveDownload, HardDriveUpload
+} from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { Product, Supplier, AppUser, LoginLog, Sale } from '../types';
+import { CATEGORIES } from '../constants';
+import { formatCurrency, compressImage, hashPassword } from '../utils';
+import { db } from '../db';
+
+interface AdminDashboardProps {
+  onLogout: () => void;
+  products: Product[];
+  onImportProducts: (products: Product[]) => void;
+  onUpdateProduct: (product: Product) => void;
+  onDeleteProduct: (id: string) => void;
+  suppliers: Supplier[];
+  onAddSupplier: (supplier: Supplier) => void;
+  onUpdateSupplier: (supplier: Supplier) => void;
+  onDeleteSupplier: (id: string) => void;
+  users: AppUser[];
+  loginLogs: LoginLog[];
+  onAddUser: (user: AppUser) => void;
+  onUpdateUser: (user: AppUser) => void;
+  onDeleteUser: (id: string) => void;
+  sales: Sale[];
+}
+
+const StatCard = ({ icon, title, value, accent }: any) => {
+  const colors = {
+    emerald: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
+    fuchsia: "text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/20",
+    violet: "text-violet-500 bg-violet-500/10 border-violet-500/20",
+    zinc: "text-zinc-500 bg-zinc-500/10 border-zinc-500/20",
+  };
+  const color = colors[accent as keyof typeof colors] || colors.zinc;
+  
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-[2rem] flex items-center gap-4 hover:scale-105 transition-transform shadow-lg">
+      <div className={`p-4 rounded-2xl ${color}`}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">{title}</p>
+        <p className="text-2xl font-black text-white">{value}</p>
+      </div>
+    </div>
+  );
+};
+
+const DetailedHelpItem = ({ title, icon, steps, example, tip, colorClass, borderClass, bgClass, textClass }: any) => (
+  <div className={`
+    relative overflow-hidden rounded-[2.5rem] bg-zinc-900/50 backdrop-blur-sm border border-zinc-800
+    p-6 md:p-8 h-full flex flex-col group transition-all duration-500 hover:-translate-y-2 hover:shadow-2xl
+    ${borderClass} hover:border-opacity-60
+  `}>
+    <div className={`absolute -top-24 -right-24 w-64 h-64 rounded-full blur-[80px] opacity-0 group-hover:opacity-15 transition-opacity duration-700 ease-out ${bgClass}`} />
+    <div className="relative z-10 flex-1">
+       <div className="flex items-center gap-4 mb-6">
+         <div className={`p-4 rounded-2xl bg-zinc-950 border border-zinc-800 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 ${textClass} shadow-lg`}>
+            {icon}
+         </div>
+         <h3 className="text-xl font-black text-white group-hover:text-zinc-100 transition-colors">{title}</h3>
+       </div>
+       <ol className="space-y-5 relative">
+         <div className={`absolute left-[11px] top-2 bottom-4 w-0.5 bg-zinc-800 group-hover:${bgClass} group-hover:opacity-40 transition-colors duration-500`} />
+         {steps.map((step: string, i: number) => (
+           <li key={i} className="flex gap-4 text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors relative group/item">
+             <span className={`relative z-10 flex-shrink-0 w-6 h-6 rounded-full bg-zinc-900 border border-zinc-700 flex items-center justify-center font-black text-[10px] ${textClass} group-hover/item:scale-110 transition-transform duration-300 shadow-md ring-4 ring-zinc-900/50`}>
+               {i + 1}
+             </span>
+             <span className="pt-0.5 leading-relaxed">{step}</span>
+           </li>
+         ))}
+       </ol>
+       {example && (
+         <div className="mt-8 bg-black/40 p-5 rounded-2xl border border-zinc-800/50 group-hover:border-zinc-700 transition-colors relative overflow-hidden">
+            <div className={`absolute left-0 top-0 bottom-0 w-1 ${bgClass} opacity-50`}></div>
+            <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+               <MonitorSmartphone size={12} /> Ejemplo Real
+            </p>
+            <p className="text-zinc-300 text-xs font-mono bg-zinc-900/50 p-2 rounded-lg border border-white/5">{example}</p>
+         </div>
+       )}
+    </div>
+    {tip && (
+       <div className={`mt-8 pt-5 border-t border-zinc-800/50 flex gap-3 items-start group-hover:border-${colorClass}/20 transition-colors`}>
+         <div className={`p-1.5 rounded-lg bg-${colorClass}/10 ${textClass}`}>
+            <Sparkles size={14} className="animate-pulse" />
+         </div>
+         <p className="text-xs text-zinc-500 leading-relaxed"><span className={`font-bold ${textClass} opacity-80`}>Pro Tip:</span> {tip}</p>
+       </div>
+    )}
+  </div>
+);
+
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
+  onLogout, 
+  products,
+  onImportProducts, 
+  onUpdateProduct,
+  onDeleteProduct,
+  suppliers, 
+  onAddSupplier,
+  onUpdateSupplier,
+  onDeleteSupplier,
+  users,
+  loginLogs,
+  onAddUser,
+  onUpdateUser,
+  onDeleteUser,
+  sales = []
+}) => {
+  const [activeTab, setActiveTab] = useState<'stats' | 'inventory' | 'suppliers' | 'users' | 'help'>('stats');
+  const [statsPeriod, setStatsPeriod] = useState<'day' | 'week' | 'month'>('day');
+  const [inventorySubTab, setInventorySubTab] = useState<'list' | 'manual' | 'excel' | 'json'>('list');
+  const [userSubTab, setUserSubTab] = useState<'manage' | 'logs'>('manage');
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
+  
+  const [importResult, setImportResult] = useState<{ success: boolean; count: number; message: string } | null>(null);
+  
+  const [inventorySearch, setInventorySearch] = useState('');
+  
+  // Sales Table State
+  const [salesSearch, setSalesSearch] = useState('');
+  const [salesFilterPayment, setSalesFilterPayment] = useState('all');
+  const [salesSortConfig, setSalesSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'timestamp', direction: 'desc' });
+
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  
+  const [manualProduct, setManualProduct] = useState({
+    barcode: '', name: '', category: 'golosinas', description: '', price: '', stock: '', image: ''
+  });
+  const [supplierForm, setSupplierForm] = useState({
+    name: '', address: '', phone: '', email: '', description: ''
+  });
+  const [newUserForm, setNewUserForm] = useState({
+    username: '', password: '', role: 'user' as 'admin' | 'user'
+  });
+
+  // --- Handlers para Backup y Restore ---
+  const handleBackup = async () => {
+    try {
+      const allData = {
+        products: await db.products.toArray(),
+        sales: await db.sales.toArray(),
+        users: await db.users.toArray(),
+        suppliers: await db.suppliers.toArray(),
+        timestamp: new Date().toISOString()
+      };
+      
+      const blob = new Blob([JSON.stringify(allData)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `backup_kiosco_${new Date().toISOString().split('T')[0]}.json`;
+      link.click();
+    } catch (e) {
+      alert("Error al generar backup");
+    }
+  };
+
+  const handleRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (confirm("ADVERTENCIA: Restaurar un backup SOBREESCRIBIRÁ la base de datos actual. ¿Desea continuar?")) {
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        try {
+          const data = JSON.parse(evt.target?.result as string);
+          if (data.products) await db.products.bulkPut(data.products);
+          if (data.sales) await db.sales.bulkPut(data.sales);
+          if (data.users) await db.users.bulkPut(data.users);
+          if (data.suppliers) await db.suppliers.bulkPut(data.suppliers);
+          alert("Restauración completada. Por favor recargue la página.");
+          window.location.reload();
+        } catch (err) {
+          alert("El archivo de backup es inválido.");
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini_api_key', apiKey);
+    alert("API Key guardada localmente.");
+  };
+
+  // --- Handler de imagen con compresión ---
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const compressedBase64 = await compressImage(file);
+        if (isEdit && editingProduct) {
+           setEditingProduct({ ...editingProduct, image: compressedBase64 });
+        } else {
+          setManualProduct(prev => ({ ...prev, image: compressedBase64 }));
+        }
+      } catch (e) {
+        alert("Error al procesar la imagen");
+      }
+    }
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingProduct) {
+      if (editingProduct.price < 0 || editingProduct.stock < 0) {
+        alert("El precio y el stock no pueden ser negativos.");
+        return;
+      }
+      onUpdateProduct(editingProduct);
+      setEditingProduct(null);
+    }
+  };
+
+  const filteredSales = useMemo(() => {
+    const now = new Date();
+    return sales.filter(s => {
+      const saleDate = new Date(s.timestamp);
+      if (statsPeriod === 'day') return saleDate.toDateString() === now.toDateString();
+      if (statsPeriod === 'week') return saleDate >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return saleDate >= new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+    });
+  }, [sales, statsPeriod]);
+
+  const statsCalculations = useMemo(() => {
+    const revenue = filteredSales.reduce((sum, s) => sum + s.total, 0);
+    const orders = filteredSales.length;
+    const averageTicket = orders > 0 ? revenue / orders : 0;
+    const productSales: Record<string, { name: string; qty: number; total: number; image: string }> = {};
+
+    const salesByTime = [
+      { id: '0-6', label: 'Madrugada (0-6)', min: 0, max: 6, icon: Moon, count: 0, total: 0, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
+      { id: '6-12', label: 'Mañana (6-12)', min: 6, max: 12, icon: Sunrise, count: 0, total: 0, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+      { id: '12-18', label: 'Tarde (12-18)', min: 12, max: 18, icon: Sun, count: 0, total: 0, color: 'text-orange-400', bg: 'bg-orange-500/10' },
+      { id: '18-24', label: 'Noche (18-24)', min: 18, max: 24, icon: Sunset, count: 0, total: 0, color: 'text-purple-400', bg: 'bg-purple-500/10' },
+    ];
+
+    // Day of week analysis structure (Dom=0, Lun=1, ...)
+    const daysMap = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const salesByDay = daysMap.map(day => ({ day, total: 0, count: 0 }));
+
+    filteredSales.forEach(sale => {
+      // Product Rankings
+      sale.items.forEach(item => {
+        if (!productSales[item.id]) {
+          productSales[item.id] = { name: item.name, qty: 0, total: 0, image: item.image };
+        }
+        productSales[item.id].qty += item.quantity;
+        productSales[item.id].total += item.price * item.quantity;
+      });
+
+      // Time slots
+      const date = new Date(sale.timestamp);
+      const hour = date.getHours();
+      const timeSlot = salesByTime.find(slot => hour >= slot.min && hour < slot.max);
+      if (timeSlot) {
+        timeSlot.count += 1;
+        timeSlot.total += sale.total;
+      }
+
+      // Day of week
+      const dayIndex = date.getDay();
+      salesByDay[dayIndex].total += sale.total;
+      salesByDay[dayIndex].count += 1;
+    });
+
+    const topProducts = Object.values(productSales)
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 10);
+
+    const maxDayTotal = Math.max(...salesByDay.map(d => d.total), 1);
+    const bestDay = [...salesByDay].sort((a, b) => b.total - a.total)[0];
+
+    return { 
+      revenue, 
+      orders, 
+      averageTicket, 
+      topProducts, 
+      salesByTime, 
+      salesByDay, 
+      maxDayTotal, 
+      bestDay 
+    };
+  }, [filteredSales]);
+
+  const processedSales = useMemo(() => {
+    let result = [...sales];
+    if (salesSearch) {
+      const lowerSearch = salesSearch.toLowerCase();
+      result = result.filter(s => 
+        s.id.toLowerCase().includes(lowerSearch) || 
+        s.username.toLowerCase().includes(lowerSearch) ||
+        s.items.some(i => i.name.toLowerCase().includes(lowerSearch))
+      );
+    }
+    if (salesFilterPayment !== 'all') {
+      result = result.filter(s => s.paymentMethod.toLowerCase().includes(salesFilterPayment.toLowerCase()));
+    }
+    result.sort((a, b) => {
+      let aValue: any = a[salesSortConfig.key as keyof Sale];
+      let bValue: any = b[salesSortConfig.key as keyof Sale];
+      if (salesSortConfig.key === 'timestamp') {
+        aValue = new Date(a.timestamp).getTime();
+        bValue = new Date(b.timestamp).getTime();
+      }
+      if (aValue < bValue) return salesSortConfig.direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return salesSortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return result;
+  }, [sales, salesSearch, salesFilterPayment, salesSortConfig]);
+
+  const requestSalesSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (salesSortConfig.key === key && salesSortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSalesSortConfig({ key, direction });
+  };
+
+  const processExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+        const newProducts: Product[] = data.map((row: any, index) => ({
+          id: `prod-${Date.now()}-${index}`,
+          barcode: row.Codigo || '',
+          name: row.Nombre || 'Sin nombre',
+          price: Number(row.Precio) || 0,
+          category: row.Categoria?.toLowerCase() || 'varios',
+          image: row.Imagen || 'https://via.placeholder.com/150',
+          description: row.Descripcion || '',
+          stock: Number(row.Stock) || 0,
+          isPopular: false
+        }));
+        onImportProducts(newProducts);
+        setImportResult({ success: true, count: newProducts.length, message: `Se importaron ${newProducts.length} productos correctamente.` });
+      } catch (error) {
+        setImportResult({ success: false, count: 0, message: 'Error al procesar el archivo Excel.' });
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const processJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const text = evt.target?.result as string;
+        const data = JSON.parse(text);
+        if (!Array.isArray(data)) throw new Error('El JSON debe ser un array de productos.');
+        const newProducts: Product[] = data.map((item: any, index) => ({
+          id: item.id || `prod-json-${Date.now()}-${index}`,
+          barcode: item.barcode || '',
+          name: item.name || 'Sin nombre',
+          price: Number(item.price) || 0,
+          category: item.category || 'varios',
+          image: item.image || '',
+          description: item.description || '',
+          stock: Number(item.stock) || 0,
+          isPopular: !!item.isPopular
+        }));
+        onImportProducts(newProducts);
+        setImportResult({ success: true, count: newProducts.length, message: `Se importaron ${newProducts.length} productos desde JSON.` });
+      } catch (error) {
+        setImportResult({ success: false, count: 0, message: 'Error al leer el archivo JSON. Verifique el formato.' });
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if(Number(manualProduct.price) < 0 || Number(manualProduct.stock) < 0) {
+        alert("El precio y el stock no pueden ser negativos.");
+        return;
+    }
+    const newProduct: Product = {
+      id: `prod-${Date.now()}`,
+      ...manualProduct,
+      price: Number(manualProduct.price),
+      stock: Number(manualProduct.stock),
+      isPopular: false
+    };
+    onImportProducts([newProduct]);
+    setManualProduct({ barcode: '', name: '', category: 'golosinas', description: '', price: '', stock: '', image: '' });
+    setImportResult({ success: true, count: 1, message: 'Producto agregado manualmente.' });
+  };
+
+  const handleSupplierSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingSupplierId) {
+      onUpdateSupplier({ id: editingSupplierId, ...supplierForm });
+    } else {
+      onAddSupplier({ id: `sup-${Date.now()}`, ...supplierForm });
+    }
+    setSupplierForm({ name: '', address: '', phone: '', email: '', description: '' });
+    setEditingSupplierId(null);
+    setShowSupplierForm(false);
+  };
+
+  const handleEditSupplier = (supplier: Supplier) => {
+    setSupplierForm({ name: supplier.name, address: supplier.address, phone: supplier.phone, email: supplier.email, description: supplier.description });
+    setEditingSupplierId(supplier.id);
+    setShowSupplierForm(true);
+  };
+
+  const handleNewUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const hashedPassword = await hashPassword(newUserForm.password);
+    onAddUser({ 
+      id: `user-${Date.now()}`, 
+      ...newUserForm, 
+      password: hashedPassword,
+      createdAt: new Date().toISOString() 
+    }); 
+    setNewUserForm({ username: '', password: '', role: 'user' });
+  };
+
+  const getStockStatusColor = (stock: number) => {
+    if (stock < 10) return 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]';
+    if (stock <= 50) return 'bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]';
+    return 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]';
+  };
+
+  return (
+    <div className="min-h-screen bg-black text-zinc-100 flex">
+      {/* Sidebar Navigation */}
+      <aside className="w-20 md:w-64 border-r border-zinc-800 bg-black flex flex-col fixed h-full z-50">
+        <div className="p-6 flex items-center gap-3 text-fuchsia-500 mb-6">
+          <div className="bg-fuchsia-500/10 p-2 rounded-xl">
+             <Shield size={24} />
+          </div>
+          <span className="font-black text-xl hidden md:inline tracking-tight">Admin<span className="text-white">Panel</span></span>
+        </div>
+        
+        <nav className="flex-1 space-y-2 px-2">
+          {[
+            { id: 'stats', label: 'Estadísticas', icon: <BarChart3 size={20} /> },
+            { id: 'inventory', label: 'Inventario', icon: <Package size={20} /> },
+            { id: 'suppliers', label: 'Proveedores', icon: <LayoutGrid size={20} /> },
+            { id: 'users', label: 'Usuarios', icon: <Users size={20} /> },
+            { id: 'help', label: 'Config/Ayuda', icon: <LifeBuoy size={20} /> },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as any)}
+              className={`w-full flex items-center gap-3 p-4 rounded-2xl transition-all font-medium ${
+                activeTab === item.id 
+                  ? 'bg-zinc-900 text-white border border-zinc-800 shadow-lg' 
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/50'
+              }`}
+            >
+              {item.icon}
+              <span className="hidden md:inline">{item.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="p-4 border-t border-zinc-800">
+          <button 
+            onClick={onLogout}
+            className="w-full flex items-center gap-3 p-4 rounded-2xl text-red-400 hover:bg-red-500/10 hover:text-red-500 transition-all font-medium"
+          >
+            <LogOut size={20} />
+            <span className="hidden md:inline">Cerrar Sesión</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 ml-20 md:ml-64 p-4 md:p-8 max-w-[1600px] mx-auto relative">
+        
+        {/* STATS TAB */}
+        {activeTab === 'stats' && (
+          <div className="space-y-8 animate-fade-in">
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+              <div>
+                 <h1 className="text-3xl font-black text-white">Panel de Control</h1>
+                 <p className="text-zinc-500 mt-1">Resumen de operaciones y rendimiento</p>
+              </div>
+              <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800">
+                {(['day', 'week', 'month'] as const).map((period) => (
+                  <button
+                    key={period}
+                    onClick={() => setStatsPeriod(period)}
+                    className={`px-6 py-2 rounded-xl text-sm font-bold capitalize transition-all ${
+                      statsPeriod === period ? 'bg-zinc-800 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    {period === 'day' ? 'Hoy' : period === 'week' ? 'Semana' : 'Mes'}
+                  </button>
+                ))}
+              </div>
+            </header>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <StatCard 
+                icon={<DollarSign size={24} />} 
+                title="Ingresos Totales" 
+                value={formatCurrency(statsCalculations.revenue)}
+                accent="emerald"
+              />
+              <StatCard 
+                icon={<ShoppingBag size={24} />} 
+                title="Ventas Realizadas" 
+                value={statsCalculations.orders} 
+                accent="fuchsia"
+              />
+              <StatCard 
+                icon={<TrendingUp size={24} />} 
+                title="Ticket Promedio" 
+                value={formatCurrency(Math.round(statsCalculations.averageTicket))}
+                accent="violet"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+              {/* RANKING CHART */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8">
+                <div className="flex items-center gap-3 mb-8">
+                   <div className="p-3 bg-yellow-500/10 rounded-2xl text-yellow-500 border border-yellow-500/20">
+                     <Trophy size={24} />
+                   </div>
+                   <h3 className="text-xl font-black text-white">Top 10 Más Vendidos</h3>
+                </div>
+                
+                <div className="space-y-4">
+                  {statsCalculations.topProducts.length > 0 ? (
+                    statsCalculations.topProducts.map((prod, index) => (
+                      <div key={index} className="flex items-center gap-4 bg-black/40 p-4 rounded-2xl border border-zinc-800/50">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${
+                          index === 0 ? 'bg-yellow-500 text-black' :
+                          index === 1 ? 'bg-zinc-400 text-black' :
+                          index === 2 ? 'bg-orange-700 text-white' : 'bg-zinc-800 text-zinc-500'
+                        }`}>
+                          #{index + 1}
+                        </div>
+                        <img loading="lazy" src={prod.image} alt={prod.name} className="w-10 h-10 rounded-lg object-cover bg-zinc-800" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-white truncate">{prod.name}</p>
+                          <div className="w-full bg-zinc-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                             <div 
+                               className="h-full bg-gradient-to-r from-fuchsia-600 to-violet-600" 
+                               style={{ width: `${(prod.qty / statsCalculations.topProducts[0].qty) * 100}%` }}
+                             />
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-black text-white">{prod.qty}</p>
+                          <p className="text-[10px] text-zinc-500 uppercase">Unidades</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-10 text-zinc-600">
+                      <p>No hay datos suficientes en este período</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* COLUMNA DERECHA: Categorías y Análisis Semanal */}
+              <div className="flex flex-col gap-8">
+                  {/* Categorías */}
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 flex flex-col items-center justify-center text-center flex-1 min-h-[300px]">
+                     <div className="w-48 h-48 rounded-full border-[20px] border-zinc-800 border-t-fuchsia-500 border-r-violet-500 relative mb-6">
+                        <div className="absolute inset-0 flex items-center justify-center flex-col">
+                          <span className="text-3xl font-black text-white">{CATEGORIES.length - 1}</span>
+                          <span className="text-[10px] uppercase text-zinc-500 font-bold">Categorías</span>
+                        </div>
+                     </div>
+                     <h3 className="text-xl font-bold text-white mb-2">Distribución de Catálogo</h3>
+                     <p className="text-zinc-500 text-sm max-w-xs">Tus productos están organizados principalmente en Golosinas y Bebidas.</p>
+                  </div>
+
+                  {/* Nuevo: Análisis Semanal */}
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8">
+                     <div className="flex items-center gap-3 mb-6">
+                         <div className="p-3 bg-blue-500/10 rounded-2xl text-blue-500 border border-blue-500/20">
+                             <BarChart3 size={24} />
+                         </div>
+                         <div>
+                             <h3 className="text-xl font-black text-white">Rendimiento Semanal</h3>
+                             <p className="text-xs text-zinc-500">
+                                 Mejor día: <span className="text-white font-bold">{statsCalculations.bestDay?.day || '-'}</span> ({formatCurrency(statsCalculations.bestDay?.total || 0)})
+                             </p>
+                         </div>
+                     </div>
+ 
+                     <div className="flex items-end justify-between gap-2 h-40 mt-4">
+                         {statsCalculations.salesByDay.map((dayData) => (
+                             <div key={dayData.day} className="flex flex-col items-center gap-2 flex-1 group">
+                                 <div className="w-full bg-zinc-800/50 rounded-t-lg relative flex items-end justify-center overflow-hidden group-hover:bg-zinc-800 transition-colors h-full">
+                                     <div 
+                                         className={`w-full ${dayData.day === statsCalculations.bestDay?.day && dayData.total > 0 ? 'bg-blue-500' : 'bg-zinc-600'} opacity-80 group-hover:opacity-100 transition-all duration-700 rounded-t-lg`}
+                                         style={{ height: `${(dayData.total / statsCalculations.maxDayTotal) * 100}%` }}
+                                     ></div>
+                                 </div>
+                                 <span className={`text-[10px] md:text-xs font-bold uppercase ${dayData.day === statsCalculations.bestDay?.day && dayData.total > 0 ? 'text-blue-500' : 'text-zinc-500'}`}>
+                                     {dayData.day}
+                                 </span>
+                             </div>
+                         ))}
+                     </div>
+                  </div>
+              </div>
+            </div>
+
+            {/* TIME BREAKDOWN SECTION */}
+            <div className="mt-8">
+              <h3 className="text-xl font-black text-white flex items-center gap-3 mb-6 px-2">
+                <Clock size={24} className="text-zinc-500" /> 
+                Desglose por Horario
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                {statsCalculations.salesByTime.map((slot) => (
+                  <div key={slot.id} className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-5 flex items-center gap-4 hover:border-zinc-700 transition-all">
+                    <div className={`p-4 rounded-2xl ${slot.bg} ${slot.color}`}>
+                      <slot.icon size={24} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1">{slot.label}</p>
+                      <p className="text-xl font-black text-white">{formatCurrency(slot.total)}</p>
+                      <p className="text-xs text-zinc-500 font-bold mt-1">{slot.count} ventas</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* SALES DETAIL TABLE SECTION */}
+             <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-6 md:p-8 mt-8">
+              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4">
+                <h3 className="text-xl font-black text-white flex items-center gap-3">
+                  <FileText size={24} className="text-fuchsia-500" /> 
+                  Detalle de Ventas Históricas
+                </h3>
+                
+                <div className="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
+                   <div className="relative flex-1 md:w-64">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={16}/>
+                      <input 
+                        type="text" 
+                        placeholder="Buscar ID, Usuario o Producto..." 
+                        className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:border-fuchsia-500 outline-none"
+                        value={salesSearch}
+                        onChange={(e) => setSalesSearch(e.target.value)}
+                      />
+                   </div>
+                   
+                   <div className="relative">
+                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"><Filter size={14} /></div>
+                     <select 
+                       className="w-full md:w-auto bg-black border border-zinc-800 rounded-xl py-2.5 pl-9 pr-8 text-sm text-white focus:border-fuchsia-500 outline-none appearance-none cursor-pointer"
+                       value={salesFilterPayment}
+                       onChange={(e) => setSalesFilterPayment(e.target.value)}
+                     >
+                       <option value="all">Todos los Métodos</option>
+                       <option value="efectivo">Efectivo</option>
+                       <option value="transferencia">Transferencia</option>
+                     </select>
+                   </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-zinc-950 text-zinc-500 text-[10px] uppercase font-black tracking-widest border-b border-zinc-800">
+                    <tr>
+                      <th className="p-4 rounded-tl-xl">ID Venta</th>
+                      <th className="p-4">Fecha/Hora</th>
+                      <th className="p-4">Usuario</th>
+                      <th className="p-4 w-1/3">Productos</th>
+                      <th className="p-4">Pago</th>
+                      <th className="p-4 text-right rounded-tr-xl">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/50 text-sm">
+                    {processedSales.length === 0 ? (
+                       <tr>
+                         <td colSpan={6} className="p-8 text-center text-zinc-600 font-medium">No se encontraron ventas con los filtros actuales.</td>
+                       </tr>
+                    ) : (
+                      processedSales.map(sale => (
+                        <tr key={sale.id} className="hover:bg-zinc-800/30 transition-colors">
+                          <td className="p-4 font-mono text-zinc-400 text-xs">#{sale.id.split('-')[1]?.slice(-6) || sale.id.slice(0,6)}</td>
+                          <td className="p-4 text-zinc-300">
+                            <div>{new Date(sale.timestamp).toLocaleDateString()}</div>
+                            <div className="text-xs text-zinc-600 font-medium">{new Date(sale.timestamp).toLocaleTimeString()}</div>
+                          </td>
+                          <td className="p-4 font-bold text-white">{sale.username}</td>
+                          <td className="p-4">
+                            <div className="flex flex-col gap-1">
+                              {sale.items.slice(0, 3).map((item, idx) => (
+                                <span key={idx} className="text-zinc-400 text-xs">
+                                  <span className="text-fuchsia-500 font-bold">{item.quantity}x</span> {item.name}
+                                </span>
+                              ))}
+                              {sale.items.length > 3 && (
+                                <span className="text-[10px] text-zinc-600 font-bold italic">
+                                  + {sale.items.length - 3} productos más...
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border ${
+                              sale.paymentMethod === 'efectivo' 
+                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+                                : 'bg-violet-500/10 text-violet-500 border-violet-500/20'
+                            }`}>
+                              {sale.paymentMethod}
+                            </span>
+                          </td>
+                          <td className="p-4 text-right font-black text-white rounded-tr-xl">
+                            {formatCurrency(sale.total)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* INVENTORY TAB */}
+        {activeTab === 'inventory' && (
+          <div className="space-y-6 animate-fade-in">
+             {/* ... Inventory logic ... */}
+             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+               <div>
+                  <h2 className="text-2xl font-black text-white">Gestión de Inventario</h2>
+                  <p className="text-zinc-500">Administra tus productos, precios y stock.</p>
+               </div>
+               
+               <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800">
+                 {[
+                   { id: 'list', icon: List, label: 'Lista' },
+                   { id: 'manual', icon: PlusCircle, label: 'Manual' },
+                   { id: 'excel', icon: FileSpreadsheet, label: 'Excel' },
+                   { id: 'json', icon: FileJson, label: 'JSON' }
+                 ].map(item => (
+                   <button
+                     key={item.id}
+                     onClick={() => setInventorySubTab(item.id as any)}
+                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+                       inventorySubTab === item.id 
+                         ? 'bg-zinc-800 text-white shadow-md' 
+                         : 'text-zinc-500 hover:text-white'
+                     }`}
+                   >
+                     <item.icon size={16} />
+                     <span className="hidden sm:inline">{item.label}</span>
+                   </button>
+                 ))}
+               </div>
+             </div>
+
+             {/* INVENTORY: LIST VIEW */}
+             {inventorySubTab === 'list' && (
+               <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-6 overflow-hidden">
+                 <div className="flex items-center gap-4 mb-6 bg-black p-3 rounded-2xl border border-zinc-800">
+                   <Search size={20} className="text-zinc-500 ml-2" />
+                   <input
+                     type="text"
+                     placeholder="Buscar por nombre o código..."
+                     className="bg-transparent border-none outline-none text-white w-full placeholder:text-zinc-600"
+                     value={inventorySearch}
+                     onChange={(e) => setInventorySearch(e.target.value)}
+                   />
+                 </div>
+                 
+                 <div className="overflow-x-auto">
+                   <table className="w-full text-left border-collapse">
+                      <thead className="bg-zinc-950 text-zinc-500 text-[10px] uppercase font-black tracking-widest border-b border-zinc-800">
+                        <tr>
+                          <th className="p-4 pl-6">Visual</th>
+                          <th className="p-4">Detalle Producto</th>
+                          <th className="p-4">Categoría</th>
+                          <th className="p-4">Precios (ARS)</th>
+                          <th className="p-4">Inventario</th>
+                          <th className="p-4 text-right pr-6">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800/50">
+                        {products
+                          .filter(p => p.name.toLowerCase().includes(inventorySearch.toLowerCase()) || p.barcode?.includes(inventorySearch))
+                          .slice(0, 100) // Virtualization Hack: Limit to 100 items render for speed
+                          .map(product => (
+                          <tr key={product.id} className="hover:bg-zinc-800/30 transition-colors group">
+                             {/* Visual */}
+                             <td className="p-4 pl-6 w-20">
+                               <img loading="lazy" src={product.image} className="w-12 h-12 rounded-xl object-cover bg-zinc-800 border border-zinc-800 group-hover:border-zinc-700 transition-colors" alt="" />
+                             </td>
+                             <td className="p-4">
+                               <div className="flex flex-col">
+                                 <p className="font-bold text-white text-sm mb-1">{product.name}</p>
+                                 <div className="flex items-center gap-2">
+                                    <span className="bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded text-[10px] font-mono tracking-wide">
+                                      {product.barcode ? product.barcode.slice(0, 4) : 'CODE'}
+                                    </span>
+                                 </div>
+                               </div>
+                             </td>
+                             <td className="p-4">
+                               <span className="bg-zinc-800/50 border border-zinc-800 text-zinc-400 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                 {product.category}
+                               </span>
+                             </td>
+                             <td className="p-4">
+                               <div className="flex flex-col">
+                                 <span className="text-emerald-400 font-black text-base">{formatCurrency(product.price)}</span>
+                               </div>
+                             </td>
+                             <td className="p-4">
+                                <div className="flex flex-col gap-1.5 w-32">
+                                   <div className="flex justify-between items-baseline">
+                                      <span className="text-xs font-bold text-white">{product.stock} u.</span>
+                                      <span className="text-[9px] font-bold text-zinc-600 uppercase">Stock</span>
+                                   </div>
+                                   <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                                      <div 
+                                        className={`h-full rounded-full transition-all duration-500 ${getStockStatusColor(product.stock)}`} 
+                                        style={{ width: `${Math.min(product.stock, 100)}%` }}
+                                      />
+                                   </div>
+                                </div>
+                             </td>
+                             <td className="p-4 pr-6 text-right">
+                               <div className="flex justify-end gap-3 opacity-60 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => setEditingProduct(product)} className="text-zinc-500 hover:text-white transition-colors">
+                                    <Pencil size={18} />
+                                  </button>
+                                  <button onClick={() => onDeleteProduct(product.id)} className="text-zinc-500 hover:text-red-500 transition-colors">
+                                    <Trash2 size={18} />
+                                  </button>
+                               </div>
+                             </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                   </table>
+                 </div>
+               </div>
+             )}
+
+             {/* INVENTORY: MANUAL ADD */}
+             {inventorySubTab === 'manual' && (
+                <div className="max-w-2xl mx-auto bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8">
+                  <h3 className="text-xl font-bold text-white mb-6">Agregar Producto Manualmente</h3>
+                  <form onSubmit={handleManualSubmit} className="space-y-4">
+                    {/* ... (Existing manual add form) ... */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-zinc-500 uppercase">Código de Barras</label>
+                        <input required className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-fuchsia-500" value={manualProduct.barcode} onChange={e => setManualProduct({...manualProduct, barcode: e.target.value})} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-zinc-500 uppercase">Nombre</label>
+                        <input required className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-fuchsia-500" value={manualProduct.name} onChange={e => setManualProduct({...manualProduct, name: e.target.value})} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                       <div className="space-y-2">
+                        <label className="text-xs font-bold text-zinc-500 uppercase">Precio</label>
+                        <input required type="number" min="0" className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-fuchsia-500" value={manualProduct.price} onChange={e => setManualProduct({...manualProduct, price: e.target.value})} />
+                      </div>
+                       <div className="space-y-2">
+                        <label className="text-xs font-bold text-zinc-500 uppercase">Stock</label>
+                        <input required type="number" min="0" className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-fuchsia-500" value={manualProduct.stock} onChange={e => setManualProduct({...manualProduct, stock: e.target.value})} />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-zinc-500 uppercase">Categoría</label>
+                      <select className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-fuchsia-500" value={manualProduct.category} onChange={e => setManualProduct({...manualProduct, category: e.target.value})}>
+                        {CATEGORIES.filter(c => c.id !== 'all').map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-zinc-500 uppercase">Imagen (Se comprimirá automáticamente)</label>
+                      <div className="flex gap-2">
+                         <input className="flex-1 bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-fuchsia-500" placeholder="https://..." value={manualProduct.image} onChange={e => setManualProduct({...manualProduct, image: e.target.value})} />
+                         <label className="bg-zinc-800 hover:bg-zinc-700 text-white p-3 rounded-xl cursor-pointer">
+                            <Upload size={20} />
+                            <input type="file" hidden accept="image/*" onChange={(e) => handleImageFileChange(e, false)} />
+                         </label>
+                      </div>
+                    </div>
+                    <button type="submit" className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black py-4 rounded-xl mt-4">GUARDAR PRODUCTO</button>
+                  </form>
+                </div>
+             )}
+             
+             {/* Excel/JSON Import */}
+             {(inventorySubTab === 'excel' || inventorySubTab === 'json') && (
+                <div className="max-w-xl mx-auto space-y-8 py-10">
+                   <div className="text-center">
+                      <div className="mx-auto w-24 h-24 bg-zinc-900 rounded-full flex items-center justify-center border border-zinc-800 mb-6">
+                         {inventorySubTab === 'excel' ? <FileSpreadsheet size={40} className="text-emerald-500" /> : <FileJson size={40} className="text-yellow-500" />}
+                      </div>
+                      <h3 className="text-2xl font-black text-white">Importar desde {inventorySubTab === 'excel' ? 'Excel' : 'JSON'}</h3>
+                      <p className="text-zinc-500 mt-2">Selecciona tu archivo para actualizar el catálogo masivamente.</p>
+                   </div>
+                   <label className="block w-full border-2 border-dashed border-zinc-800 rounded-3xl p-10 hover:border-fuchsia-500/50 hover:bg-zinc-900/50 transition-all cursor-pointer group text-center">
+                      <Upload className="mx-auto text-zinc-600 group-hover:text-fuchsia-500 mb-4 transition-colors" size={40} />
+                      <span className="font-bold text-zinc-400 group-hover:text-white">Haz click para seleccionar archivo</span>
+                      <input 
+                        type="file" 
+                        hidden 
+                        accept={inventorySubTab === 'excel' ? ".xlsx, .xls" : ".json"} 
+                        onChange={inventorySubTab === 'excel' ? processExcel : processJSON} 
+                      />
+                   </label>
+                </div>
+             )}
+          </div>
+        )}
+
+        {/* SUPPLIERS TAB */}
+        {activeTab === 'suppliers' && (
+          <div className="space-y-6 animate-fade-in">
+             {/* ... Suppliers content (unchanged logic) ... */}
+             <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-black text-white">Proveedores</h2>
+                <button onClick={() => setShowSupplierForm(!showSupplierForm)} className="bg-fuchsia-600 hover:bg-fuchsia-500 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2">
+                  {showSupplierForm ? <X size={18}/> : <PlusCircle size={18}/>}
+                  {showSupplierForm ? 'Cancelar' : 'Nuevo Proveedor'}
+                </button>
+             </div>
+             {showSupplierForm && (
+               <form onSubmit={handleSupplierSubmit} className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-6 space-y-4">
+                  <h3 className="font-bold text-white mb-4">{editingSupplierId ? 'Editar Proveedor' : 'Nuevo Proveedor'}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input required placeholder="Nombre Empresa" className="bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none" value={supplierForm.name} onChange={e => setSupplierForm({...supplierForm, name: e.target.value})} />
+                    <input placeholder="Teléfono" className="bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none" value={supplierForm.phone} onChange={e => setSupplierForm({...supplierForm, phone: e.target.value})} />
+                    <input placeholder="Email" className="bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none" value={supplierForm.email} onChange={e => setSupplierForm({...supplierForm, email: e.target.value})} />
+                    <input placeholder="Dirección" className="bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none" value={supplierForm.address} onChange={e => setSupplierForm({...supplierForm, address: e.target.value})} />
+                  </div>
+                  <textarea placeholder="Notas adicionales..." className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none h-24" value={supplierForm.description} onChange={e => setSupplierForm({...supplierForm, description: e.target.value})} />
+                  <button type="submit" className="bg-white text-black font-black px-6 py-3 rounded-xl hover:bg-zinc-200">GUARDAR</button>
+               </form>
+             )}
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+               {suppliers.map(sup => (
+                 <div key={sup.id} className="bg-zinc-900 border border-zinc-800 p-6 rounded-[2rem] hover:border-zinc-700 transition-colors">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center text-zinc-400">
+                        <LayoutGrid size={24} />
+                      </div>
+                      <div className="flex gap-2">
+                         <button onClick={() => handleEditSupplier(sup)} className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-white"><Pencil size={16}/></button>
+                         <button onClick={() => onDeleteSupplier(sup.id)} className="p-2 hover:bg-red-500/20 rounded-full text-zinc-500 hover:text-red-500"><Trash2 size={16}/></button>
+                      </div>
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">{sup.name}</h3>
+                    <div className="space-y-2 text-sm text-zinc-400">
+                       <p className="flex items-center gap-2"><Phone size={14}/> {sup.phone || '-'}</p>
+                       <p className="flex items-center gap-2"><Mail size={14}/> {sup.email || '-'}</p>
+                       <p className="flex items-center gap-2"><MapPin size={14}/> {sup.address || '-'}</p>
+                    </div>
+                 </div>
+               ))}
+             </div>
+          </div>
+        )}
+
+        {/* USERS TAB */}
+        {activeTab === 'users' && (
+          <div className="space-y-6 animate-fade-in">
+             <div className="flex gap-4 border-b border-zinc-800 pb-4">
+                <button onClick={() => setUserSubTab('manage')} className={`pb-2 px-2 font-bold ${userSubTab === 'manage' ? 'text-fuchsia-500 border-b-2 border-fuchsia-500' : 'text-zinc-500'}`}>Gestionar Usuarios</button>
+                <button onClick={() => setUserSubTab('logs')} className={`pb-2 px-2 font-bold ${userSubTab === 'logs' ? 'text-fuchsia-500 border-b-2 border-fuchsia-500' : 'text-zinc-500'}`}>Registros de Acceso</button>
+             </div>
+
+             {userSubTab === 'manage' && (
+               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  <div className="lg:col-span-1 bg-zinc-900 border border-zinc-800 p-6 rounded-[2rem] h-fit">
+                     <h3 className="font-bold text-white mb-6">Crear Nuevo Usuario</h3>
+                     <form onSubmit={handleNewUserSubmit} className="space-y-4">
+                        <div className="space-y-2">
+                           <label className="text-xs font-bold text-zinc-500 uppercase">Usuario</label>
+                           <input required className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none" value={newUserForm.username} onChange={e => setNewUserForm({...newUserForm, username: e.target.value})} />
+                        </div>
+                        <div className="space-y-2">
+                           <label className="text-xs font-bold text-zinc-500 uppercase">Contraseña</label>
+                           <input required type="password" className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none" value={newUserForm.password} onChange={e => setNewUserForm({...newUserForm, password: e.target.value})} />
+                        </div>
+                        <div className="space-y-2">
+                           <label className="text-xs font-bold text-zinc-500 uppercase">Rol</label>
+                           <select className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none" value={newUserForm.role} onChange={e => setNewUserForm({...newUserForm, role: e.target.value as any})}>
+                             <option value="user">Vendedor (User)</option>
+                             <option value="admin">Administrador</option>
+                           </select>
+                        </div>
+                        <button type="submit" className="w-full bg-white text-black font-black py-3 rounded-xl hover:bg-zinc-200 mt-2">CREAR USUARIO</button>
+                     </form>
+                  </div>
+                  <div className="lg:col-span-2 space-y-4">
+                     {users.map(user => (
+                       <div key={user.id} className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                             <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg ${user.role === 'admin' ? 'bg-fuchsia-500 text-white' : 'bg-zinc-800 text-zinc-400'}`}>
+                                {user.username.charAt(0).toUpperCase()}
+                             </div>
+                             <div>
+                                <p className="font-bold text-white">{user.username}</p>
+                                <p className="text-xs text-zinc-500 font-bold uppercase">{user.role}</p>
+                             </div>
+                          </div>
+                          {user.role !== 'admin' && (
+                             <button onClick={() => onDeleteUser(user.id)} className="p-2 bg-zinc-950 text-zinc-500 hover:text-red-500 rounded-lg">
+                                <Trash2 size={20} />
+                             </button>
+                          )}
+                       </div>
+                     ))}
+                  </div>
+               </div>
+             )}
+             {userSubTab === 'logs' && (
+               <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-6 overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead className="bg-zinc-950 text-zinc-500 text-[10px] uppercase font-black tracking-widest">
+                       <tr>
+                         <th className="p-4">Fecha/Hora</th>
+                         <th className="p-4">Usuario</th>
+                         <th className="p-4">Dispositivo</th>
+                       </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/50">
+                       {[...loginLogs].reverse().map(log => (
+                         <tr key={log.id} className="text-sm">
+                            <td className="p-4 text-zinc-400">{new Date(log.timestamp).toLocaleString()}</td>
+                            <td className="p-4 font-bold text-white">{log.username}</td>
+                            <td className="p-4 text-zinc-500">{log.device}</td>
+                         </tr>
+                       ))}
+                    </tbody>
+                  </table>
+               </div>
+             )}
+          </div>
+        )}
+
+        {/* HELP / SETTINGS TAB */}
+        {activeTab === 'help' && (
+           <div className="space-y-8 animate-fade-in pb-10">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                 {/* Backup Tools */}
+                 <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-[2rem]">
+                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                       <Database size={24} className="text-blue-500" />
+                       Copia de Seguridad
+                    </h3>
+                    <p className="text-zinc-500 text-sm mb-6">Descarga toda la base de datos para no perder tu información.</p>
+                    
+                    <div className="space-y-4">
+                       <button onClick={handleBackup} className="w-full flex items-center justify-center gap-3 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white py-4 rounded-xl font-bold transition-all border border-blue-500/20">
+                          <HardDriveDownload size={20} />
+                          DESCARGAR BACKUP (JSON)
+                       </button>
+                       <label className="w-full flex items-center justify-center gap-3 bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white py-4 rounded-xl font-bold transition-all cursor-pointer">
+                          <HardDriveUpload size={20} />
+                          RESTAURAR BACKUP
+                          <input type="file" hidden accept=".json" onChange={handleRestore} />
+                       </label>
+                    </div>
+                 </div>
+
+                 {/* API Key Config */}
+                 <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-[2rem]">
+                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                       <Key size={24} className="text-yellow-500" />
+                       Configuración API
+                    </h3>
+                    <p className="text-zinc-500 text-sm mb-6">Configura tu clave de Google Gemini para usar la IA.</p>
+                    
+                    <div className="space-y-4">
+                       <input 
+                         type="password" 
+                         value={apiKey} 
+                         onChange={(e) => setApiKey(e.target.value)} 
+                         placeholder="Pegar API Key aquí..."
+                         className="w-full bg-black border border-zinc-800 p-4 rounded-xl text-white outline-none focus:border-yellow-500/50"
+                       />
+                       <button onClick={handleApiKeySave} className="w-full bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600 hover:text-white py-4 rounded-xl font-bold transition-all border border-yellow-500/20">
+                          GUARDAR CLAVE
+                       </button>
+                    </div>
+                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <DetailedHelpItem 
+                  title="Soporte Técnico"
+                  icon={<MessageCircle size={32}/>}
+                  textClass="text-blue-400"
+                  bgClass="bg-blue-500"
+                  colorClass="blue-500"
+                  borderClass="border-blue-500/20"
+                  steps={[
+                    "Desarrollador: Kedzierski Pablo Andrés",
+                    "WhatsApp / Tel: 11 7103-3622",
+                    "Email: pablokedzierski@gmail.com",
+                    "Horario: Lunes a Viernes 9hs a 18hs"
+                  ]}
+                  example="WhatsApp: 11 7103-3622"
+                  tip="Guarda el número en tus contactos para acceso rápido."
+                />
+                <DetailedHelpItem 
+                  title="Cierre de Caja"
+                  icon={<Calculator size={32}/>}
+                  textClass="text-orange-400"
+                  bgClass="bg-orange-500"
+                  colorClass="orange-500"
+                  borderClass="border-orange-500/20"
+                  steps={[
+                    "Ve al inicio y haz click en 'Cierre de Caja' (arriba a la derecha).",
+                    "Verifica los totales de efectivo vs transferencia.",
+                    "Imprime el ticket de cierre para el administrador."
+                  ]}
+                  tip="Haz un cierre al finalizar cada turno para mantener las cuentas claras."
+                />
+             </div>
+           </div>
+        )}
+
+      </main>
+
+      {/* Product Edit Modal */}
+      {editingProduct && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+           <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-[2rem] w-full max-w-2xl shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
+              <h3 className="text-xl font-bold text-white mb-6">Editar Producto</h3>
+              <form onSubmit={handleSaveEdit} className="space-y-4">
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                       <label className="text-xs text-zinc-500 font-bold uppercase">Nombre</label>
+                       <input className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none" value={editingProduct.name} onChange={e => setEditingProduct({...editingProduct, name: e.target.value})} />
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-xs text-zinc-500 font-bold uppercase">Precio</label>
+                       <input type="number" min="0" className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none" value={editingProduct.price} onChange={e => setEditingProduct({...editingProduct, price: Number(e.target.value)})} />
+                    </div>
+                 </div>
+                 
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <label className="text-xs text-zinc-500 font-bold uppercase">Código de Barras</label>
+                        <input className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none" value={editingProduct.barcode || ''} onChange={e => setEditingProduct({...editingProduct, barcode: e.target.value})} />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-xs text-zinc-500 font-bold uppercase">Categoría</label>
+                        <select className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none" value={editingProduct.category} onChange={e => setEditingProduct({...editingProduct, category: e.target.value})}>
+                            {CATEGORIES.filter(c => c.id !== 'all').map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                 </div>
+
+                 <div className="space-y-2">
+                    <label className="text-xs text-zinc-500 font-bold uppercase">Stock</label>
+                    <input type="number" min="0" className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none" value={editingProduct.stock} onChange={e => setEditingProduct({...editingProduct, stock: Number(e.target.value)})} />
+                 </div>
+
+                 <div className="space-y-2">
+                    <label className="text-xs text-zinc-500 font-bold uppercase">Descripción</label>
+                    <textarea className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none h-20 resize-none" value={editingProduct.description || ''} onChange={e => setEditingProduct({...editingProduct, description: e.target.value})} />
+                 </div>
+
+                 <div className="space-y-2">
+                    <label className="text-xs text-zinc-500 font-bold uppercase">Imagen (Comprimida automáticamente)</label>
+                    <div className="flex gap-4 items-center">
+                       <img src={editingProduct.image} alt="" className="w-16 h-16 rounded-xl object-cover bg-zinc-800" />
+                       <label className="bg-zinc-800 text-white px-4 py-2 rounded-xl cursor-pointer hover:bg-zinc-700">
+                          Cambiar Imagen
+                          <input type="file" hidden accept="image/*" onChange={(e) => handleImageFileChange(e, true)} />
+                       </label>
+                    </div>
+                 </div>
+                 <div className="flex gap-4 mt-6">
+                    <button type="button" onClick={() => setEditingProduct(null)} className="flex-1 py-3 bg-zinc-800 text-white rounded-xl font-bold">CANCELAR</button>
+                    <button type="submit" className="flex-1 py-3 bg-fuchsia-600 text-white rounded-xl font-bold hover:bg-fuchsia-500">GUARDAR CAMBIOS</button>
+                 </div>
+              </form>
+           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AdminDashboard;

@@ -1,0 +1,19 @@
+
+{
+  "name": "Kiosco Digital - Las Chicas",
+  "short_name": "Kiosco",
+  "description": "Terminal de ventas y e-shop para Kiosco Las Chicas",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#d946ef",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3081/3081559.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "2.9.7 Sistema De Ventas - Las Chicas",
+  "description": "Un sistema avanzado de gestión de cobros y datos de punto de venta, moderno e intuitivo.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
