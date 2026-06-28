@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Lock, User, Store, AlertCircle, Download, HelpCircle, ChevronRight, MoreVertical, PlusSquare, Smartphone, X } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Lock, User, Store, AlertCircle, Download, HelpCircle, ChevronRight, MoreVertical, PlusSquare, Smartphone, X, Eye, EyeOff } from 'lucide-react';
 import { AppUser } from '../types';
 import { verifyPassword } from '../utils';
 
@@ -8,15 +8,44 @@ interface LoginProps {
   users: AppUser[];
   onLogin: (user: AppUser, device: string) => void;
   showInstallBtn?: boolean;
-  onInstallClick?: () => void;
+  onInstallClick?: () => Promise<boolean> | boolean;
+  isOnline?: boolean;
 }
 
-const Login: React.FC<LoginProps> = ({ users, onLogin, showInstallBtn, onInstallClick }) => {
+const Login: React.FC<LoginProps> = ({ users, onLogin, showInstallBtn, onInstallClick, isOnline = true }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [showGuide, setShowGuide] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const timeoutRef = useRef<any>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleTogglePassword = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    setShowPassword((prev) => {
+      const next = !prev;
+      if (next) {
+        // Auto-hide after 4 seconds
+        timeoutRef.current = setTimeout(() => {
+          setShowPassword(false);
+        }, 4000);
+      }
+      return next;
+    });
+  };
 
   const getDeviceInfo = () => {
     const ua = navigator.userAgent;
@@ -75,13 +104,22 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, showInstallBtn, onInstall
             <div className="relative group">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-fuchsia-500 transition-colors" size={20} />
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
-                className="w-full bg-black/40 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-zinc-700 focus:border-fuchsia-500/50 focus:ring-4 focus:ring-fuchsia-500/5 outline-none transition-all"
+                className="w-full bg-black/40 border border-zinc-800 rounded-2xl py-4 pl-12 pr-12 text-white placeholder:text-zinc-700 focus:border-fuchsia-500/50 focus:ring-4 focus:ring-fuchsia-500/5 outline-none transition-all"
                 placeholder="Contraseña"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
+              <button
+                type="button"
+                onClick={handleTogglePassword}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-fuchsia-500 transition-colors p-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20"
+                id="toggle-password-visibility"
+                title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
             </div>
           </div>
 
@@ -108,16 +146,31 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, showInstallBtn, onInstall
               Desarrollado por Kedzierski Pablo Andrés, para kiosco LAS CHICAS
             </p>
             {/* Version Badge */}
-            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900/50 border border-zinc-800/50">
+            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900/50 border border-zinc-800/50">
                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-               <span className="text-[9px] text-zinc-500 font-mono font-bold tracking-widest">v2.9.1 (Stable)</span>
+               <span className="text-[9px] text-zinc-500 font-mono font-bold tracking-widest mr-1">v2.9.1</span>
+               <div className="w-[1px] h-3 bg-zinc-800 mx-1"></div>
+               {isOnline ? (
+                 <span className="text-[9px] text-emerald-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                   <span className="w-1 h-1 rounded-full bg-emerald-500"></span> Online
+                 </span>
+               ) : (
+                 <span className="text-[9px] text-red-400 font-bold uppercase tracking-wider flex items-center gap-1 animate-pulse">
+                   <span className="w-1 h-1 rounded-full bg-red-400"></span> Modo Local
+                 </span>
+               )}
             </div>
           </div>
 
           <div className="space-y-3">
             {showInstallBtn ? (
               <button 
-                onClick={onInstallClick}
+                onClick={async () => {
+                  if (onInstallClick) {
+                    const handled = await onInstallClick();
+                    if (!handled) setShowGuide(true);
+                  }
+                }}
                 className="w-full group relative overflow-hidden bg-white text-black font-black py-4 rounded-2xl transition-all shadow-xl hover:bg-zinc-100 active:scale-95 flex items-center justify-center gap-3"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>

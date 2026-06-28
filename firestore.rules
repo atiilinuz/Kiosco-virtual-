@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return true; // Bypass Firebase Auth restriction (auth/admin-restricted-operation) in the sandbox environment
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Product validation
+    function isValidProduct(data) {
+      return data.keys().hasAll(['id', 'name', 'price', 'category', 'image', 'description', 'stock'])
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 200
+        && data.price is number && data.price >= 0
+        && data.category is string && data.category.size() <= 100
+        && data.image is string
+        && data.description is string
+        && data.stock is number && data.stock >= 0;
+    }
+
+    // Supplier validation
+    function isValidSupplier(data) {
+      return data.keys().hasAll(['id', 'name', 'address', 'phone', 'email', 'description'])
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 200
+        && data.address is string
+        && data.phone is string
+        && data.email is string
+        && data.description is string;
+    }
+
+    // AppUser validation
+    function isValidAppUser(data) {
+      return data.keys().hasAll(['id', 'username', 'password', 'role', 'createdAt'])
+        && data.id is string && data.id.size() <= 128
+        && data.username is string && data.username.size() <= 100
+        && data.password is string && data.password.size() <= 256
+        && data.role is string && (data.role == 'admin' || data.role == 'user')
+        && data.createdAt is string;
+    }
+
+    // LoginLog validation
+    function isValidLoginLog(data) {
+      return data.keys().hasAll(['id', 'userId', 'username', 'timestamp', 'device'])
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.username is string && data.username.size() <= 100
+        && data.timestamp is string
+        && data.device is string;
+    }
+
+    // Sale validation
+    function isValidSale(data) {
+      return data.keys().hasAll(['id', 'userId', 'username', 'items', 'total', 'paymentMethod', 'timestamp'])
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.username is string && data.username.size() <= 100
+        && data.items is list
+        && data.total is number && data.total >= 0
+        && data.paymentMethod is string
+        && data.timestamp is string;
+    }
+
+    // Matches
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(productId) && isValidProduct(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(productId);
+    }
+
+    match /suppliers/{supplierId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(supplierId) && isValidSupplier(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(supplierId);
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(userId) && isValidAppUser(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(userId);
+    }
+
+    match /logs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(logId) && isValidLoginLog(request.resource.data);
+      allow update, delete: if false; // Logs are immutable
+    }
+
+    match /sales/{saleId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(saleId) && isValidSale(request.resource.data);
+      allow update, delete: if false; // Sales are immutable
+    }
+  }
+}

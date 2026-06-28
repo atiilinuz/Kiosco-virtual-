@@ -12,13 +12,16 @@ import {
   MonitorSmartphone, Printer, Calculator, Sparkles,
   FileJson, FileSpreadsheet, ClipboardCheck, MousePointerClick,
   ArrowRight, ShoppingBag, Table, Trophy, Save, Filter, ArrowUpDown, AlertTriangle,
-  Sun, Moon, Sunrise, Sunset, Database, HardDriveDownload, HardDriveUpload
+  Sun, Moon, Sunrise, Sunset, Database, HardDriveDownload, HardDriveUpload,
+  RefreshCw, Play
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db';
 import { Product, Supplier, AppUser, LoginLog, Sale } from '../types';
 import { CATEGORIES } from '../constants';
 import { formatCurrency, compressImage, hashPassword } from '../utils';
-import { db } from '../db';
+import { dbService } from '../db';
 
 interface AdminDashboardProps {
   onLogout: () => void;
@@ -36,6 +39,7 @@ interface AdminDashboardProps {
   onUpdateUser: (user: AppUser) => void;
   onDeleteUser: (id: string) => void;
   sales: Sale[];
+  isOnline?: boolean;
 }
 
 const StatCard = ({ icon, title, value, accent }: any) => {
@@ -121,9 +125,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onAddUser,
   onUpdateUser,
   onDeleteUser,
-  sales = []
+  sales = [],
+  isOnline = true
 }) => {
-  const [activeTab, setActiveTab] = useState<'stats' | 'inventory' | 'suppliers' | 'users' | 'help'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'inventory' | 'suppliers' | 'users' | 'sync' | 'help'>('stats');
+  const [editingPendingSale, setEditingPendingSale] = useState<any | null>(null);
+
   const [statsPeriod, setStatsPeriod] = useState<'day' | 'week' | 'month'>('day');
   const [inventorySubTab, setInventorySubTab] = useState<'list' | 'manual' | 'excel' | 'json'>('list');
   const [userSubTab, setUserSubTab] = useState<'manage' | 'logs'>('manage');
@@ -156,10 +163,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleBackup = async () => {
     try {
       const allData = {
-        products: await db.products.toArray(),
-        sales: await db.sales.toArray(),
-        users: await db.users.toArray(),
-        suppliers: await db.suppliers.toArray(),
+        products: products,
+        sales: sales,
+        users: users,
+        suppliers: suppliers,
         timestamp: new Date().toISOString()
       };
       
@@ -183,10 +190,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       reader.onload = async (evt) => {
         try {
           const data = JSON.parse(evt.target?.result as string);
-          if (data.products) await db.products.bulkPut(data.products);
-          if (data.sales) await db.sales.bulkPut(data.sales);
-          if (data.users) await db.users.bulkPut(data.users);
-          if (data.suppliers) await db.suppliers.bulkPut(data.suppliers);
+          await dbService.restoreDatabase(data);
           alert("Restauración completada. Por favor recargue la página.");
           window.location.reload();
         } catch (err) {
@@ -455,11 +459,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     <div className="min-h-screen bg-black text-zinc-100 flex">
       {/* Sidebar Navigation */}
       <aside className="w-20 md:w-64 border-r border-zinc-800 bg-black flex flex-col fixed h-full z-50">
-        <div className="p-6 flex items-center gap-3 text-fuchsia-500 mb-6">
-          <div className="bg-fuchsia-500/10 p-2 rounded-xl">
-             <Shield size={24} />
+        <div className="p-6 flex flex-col gap-2 border-b border-zinc-900 mb-4 shrink-0">
+          <div className="flex items-center gap-3 text-fuchsia-500">
+            <div className="bg-fuchsia-500/10 p-2 rounded-xl shrink-0">
+               <Shield size={24} />
+            </div>
+            <span className="font-black text-xl hidden md:inline tracking-tight">Admin<span className="text-white">Panel</span></span>
           </div>
-          <span className="font-black text-xl hidden md:inline tracking-tight">Admin<span className="text-white">Panel</span></span>
+          {/* Status Indicator */}
+          <div className="mt-2 flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-zinc-800/50 bg-zinc-900/40 transition-all select-none self-start md:self-stretch">
+            {isOnline ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest hidden md:inline">En línea</span>
+              </>
+            ) : (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0"></span>
+                <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest hidden md:inline">Modo Local</span>
+              </>
+            )}
+          </div>
         </div>
         
         <nav className="flex-1 space-y-2 px-2">
@@ -468,6 +488,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             { id: 'inventory', label: 'Inventario', icon: <Package size={20} /> },
             { id: 'suppliers', label: 'Proveedores', icon: <LayoutGrid size={20} /> },
             { id: 'users', label: 'Usuarios', icon: <Users size={20} /> },
+            { id: 'sync', label: 'Base de Datos', icon: <Database size={20} /> },
             { id: 'help', label: 'Config/Ayuda', icon: <LifeBuoy size={20} /> },
           ].map((item) => (
             <button
@@ -657,100 +678,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
-            {/* SALES DETAIL TABLE SECTION */}
-             <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-6 md:p-8 mt-8">
-              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4">
-                <h3 className="text-xl font-black text-white flex items-center gap-3">
-                  <FileText size={24} className="text-fuchsia-500" /> 
-                  Detalle de Ventas Históricas
-                </h3>
-                
-                <div className="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
-                   <div className="relative flex-1 md:w-64">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={16}/>
-                      <input 
-                        type="text" 
-                        placeholder="Buscar ID, Usuario o Producto..." 
-                        className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:border-fuchsia-500 outline-none"
-                        value={salesSearch}
-                        onChange={(e) => setSalesSearch(e.target.value)}
-                      />
-                   </div>
-                   
-                   <div className="relative">
-                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"><Filter size={14} /></div>
-                     <select 
-                       className="w-full md:w-auto bg-black border border-zinc-800 rounded-xl py-2.5 pl-9 pr-8 text-sm text-white focus:border-fuchsia-500 outline-none appearance-none cursor-pointer"
-                       value={salesFilterPayment}
-                       onChange={(e) => setSalesFilterPayment(e.target.value)}
-                     >
-                       <option value="all">Todos los Métodos</option>
-                       <option value="efectivo">Efectivo</option>
-                       <option value="transferencia">Transferencia</option>
-                     </select>
-                   </div>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead className="bg-zinc-950 text-zinc-500 text-[10px] uppercase font-black tracking-widest border-b border-zinc-800">
-                    <tr>
-                      <th className="p-4 rounded-tl-xl">ID Venta</th>
-                      <th className="p-4">Fecha/Hora</th>
-                      <th className="p-4">Usuario</th>
-                      <th className="p-4 w-1/3">Productos</th>
-                      <th className="p-4">Pago</th>
-                      <th className="p-4 text-right rounded-tr-xl">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/50 text-sm">
-                    {processedSales.length === 0 ? (
-                       <tr>
-                         <td colSpan={6} className="p-8 text-center text-zinc-600 font-medium">No se encontraron ventas con los filtros actuales.</td>
-                       </tr>
-                    ) : (
-                      processedSales.map(sale => (
-                        <tr key={sale.id} className="hover:bg-zinc-800/30 transition-colors">
-                          <td className="p-4 font-mono text-zinc-400 text-xs">#{sale.id.split('-')[1]?.slice(-6) || sale.id.slice(0,6)}</td>
-                          <td className="p-4 text-zinc-300">
-                            <div>{new Date(sale.timestamp).toLocaleDateString()}</div>
-                            <div className="text-xs text-zinc-600 font-medium">{new Date(sale.timestamp).toLocaleTimeString()}</div>
-                          </td>
-                          <td className="p-4 font-bold text-white">{sale.username}</td>
-                          <td className="p-4">
-                            <div className="flex flex-col gap-1">
-                              {sale.items.slice(0, 3).map((item, idx) => (
-                                <span key={idx} className="text-zinc-400 text-xs">
-                                  <span className="text-fuchsia-500 font-bold">{item.quantity}x</span> {item.name}
-                                </span>
-                              ))}
-                              {sale.items.length > 3 && (
-                                <span className="text-[10px] text-zinc-600 font-bold italic">
-                                  + {sale.items.length - 3} productos más...
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border ${
-                              sale.paymentMethod === 'efectivo' 
-                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
-                                : 'bg-violet-500/10 text-violet-500 border-violet-500/20'
-                            }`}>
-                              {sale.paymentMethod}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right font-black text-white rounded-tr-xl">
-                            {formatCurrency(sale.total)}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </div>
         )}
 
@@ -1075,6 +1002,324 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
+        {/* SYNC/DATABASE TAB */}
+        {activeTab === 'sync' && (
+          <div className="space-y-8 animate-fade-in pb-10">
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+              <div>
+                <h1 className="text-3xl font-black text-white">Mantenimiento de Base de Datos</h1>
+                <p className="text-zinc-500 mt-1">Monitorea estadísticas, realizá copias de seguridad locales e importá/exportá tus datos</p>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-zinc-800/50 bg-zinc-900/50">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="text-xs font-bold text-emerald-500 uppercase tracking-widest">Base de Datos Local Activa (IndexedDB)</span>
+              </div>
+            </header>
+
+            {/* Status Cards Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-[2rem] flex items-center gap-4 hover:border-zinc-700 transition-all">
+                <div className="p-4 rounded-2xl bg-fuchsia-500/10 text-fuchsia-500">
+                  <Package size={24} />
+                </div>
+                <div>
+                  <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">Productos</p>
+                  <p className="text-xl font-black text-white">{products.length}</p>
+                  <p className="text-xs text-zinc-500 mt-1">Registrados en inventario</p>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-[2rem] flex items-center gap-4 hover:border-zinc-700 transition-all">
+                <div className="p-4 rounded-2xl bg-emerald-500/10 text-emerald-400">
+                  <ShoppingBag size={24} />
+                </div>
+                <div>
+                  <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">Ventas Totales</p>
+                  <p className="text-xl font-black text-white">{sales.length}</p>
+                  <p className="text-xs text-zinc-500 mt-1">Registradas en el historial</p>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-[2rem] flex items-center gap-4 hover:border-zinc-700 transition-all">
+                <div className="p-4 rounded-2xl bg-blue-500/10 text-blue-500">
+                  <LayoutGrid size={24} />
+                </div>
+                <div>
+                  <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">Proveedores</p>
+                  <p className="text-xl font-black text-white">{suppliers.length}</p>
+                  <p className="text-xs text-zinc-500 mt-1">Registrados</p>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-[2rem] flex items-center gap-4 hover:border-zinc-700 transition-all">
+                <div className="p-4 rounded-2xl bg-violet-500/10 text-violet-400">
+                  <Users size={24} />
+                </div>
+                <div>
+                  <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">Usuarios</p>
+                  <p className="text-xl font-black text-white">{users.length}</p>
+                  <p className="text-xs text-zinc-500 mt-1">Cuentas con acceso</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions Card Panel */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8">
+              <h3 className="text-xl font-black text-white mb-4">Herramientas de Control y Copias de Seguridad</h3>
+              <p className="text-zinc-500 text-sm mb-6">Gestioná copias de seguridad manuales en formato JSON para guardar tus datos en tu computadora o celular, restaurar en caso de emergencias, o vaciar tu base de datos local para iniciar un nuevo ciclo.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button 
+                  onClick={handleBackup}
+                  className="flex items-center justify-center gap-3 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600 hover:text-white py-4 px-6 rounded-2xl font-bold transition-all"
+                >
+                  <HardDriveDownload size={20} />
+                  DESCARGAR RESPALDO (JSON)
+                </button>
+
+                <label 
+                  className="flex items-center justify-center gap-3 bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600 hover:text-white py-4 px-6 rounded-2xl font-bold transition-all cursor-pointer text-center"
+                >
+                  <HardDriveUpload size={20} />
+                  RESTAURAR RESPALDO (JSON)
+                  <input 
+                    type="file" 
+                    accept=".json" 
+                    onChange={handleRestore} 
+                    className="hidden" 
+                  />
+                </label>
+
+                <button 
+                  onClick={async () => {
+                    if (confirm("ADVERTENCIA CRÍTICA: ¿Estás seguro de que quieres limpiar toda la base de datos local? Se perderán permanentemente todos los productos, ventas, proveedores y usuarios locales.")) {
+                      const input = prompt("Escribe 'ELIMINAR' para confirmar la destrucción de los datos locales:");
+                      if (input === 'ELIMINAR') {
+                        await db.products.clear();
+                        await db.sales.clear();
+                        await db.suppliers.clear();
+                        await db.users.clear();
+                        await db.logs.clear();
+                        alert("Base de datos local vaciada con éxito. Recargando aplicación...");
+                        window.location.reload();
+                      }
+                    }
+                  }}
+                  className="flex items-center justify-center gap-3 bg-red-600/15 text-red-400 border border-red-500/20 hover:bg-red-600 hover:text-white py-4 px-6 rounded-2xl font-bold transition-all"
+                >
+                  <Trash2 size={20} />
+                  VACIAR BASE DE DATOS
+                </button>
+              </div>
+            </div>
+
+            {/* Custom scrollbar styling embedded in page */}
+            <style dangerouslySetInnerHTML={{__html: `
+              .custom-scrollbar::-webkit-scrollbar {
+                width: 6px;
+                height: 6px;
+              }
+              .custom-scrollbar::-webkit-scrollbar-track {
+                background: transparent;
+              }
+              .custom-scrollbar::-webkit-scrollbar-thumb {
+                background: #27272a;
+                border-radius: 9999px;
+              }
+              .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                background: #3f3f46;
+              }
+            `}} />
+
+            {/* Local Database Transactions Registry */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+                <h3 className="text-xl font-black text-white flex items-center gap-3">
+                  <Database size={24} className="text-violet-500" />
+                  Registro de Ventas en Memoria Local (Mantenimiento)
+                </h3>
+                <span className="px-3 py-1 rounded-full text-xs font-black bg-zinc-950 text-zinc-500 border border-zinc-800">
+                  {sales.length} registradas
+                </span>
+              </div>
+
+              {sales.length === 0 ? (
+                <div className="text-center py-16 border border-dashed border-zinc-800/80 rounded-3xl bg-black/10 flex flex-col items-center justify-center gap-4">
+                  <div className="p-4 rounded-full bg-zinc-800 text-zinc-500">
+                    <ShoppingBag size={40} />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-bold text-white mb-1">Sin Ventas Registradas</h4>
+                    <p className="text-zinc-500 text-sm max-w-sm mx-auto">No hay ventas registradas en la base de datos local todavía. Realizá ventas en la caja registradora para verlas aquí.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-x-auto max-h-[480px] overflow-y-auto rounded-2xl border border-zinc-800/60 custom-scrollbar relative">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-zinc-950 text-zinc-500 text-[10px] uppercase font-black tracking-widest border-b border-zinc-800 sticky top-0 z-10">
+                      <tr>
+                        <th className="p-4 pl-6">ID Venta</th>
+                        <th className="p-4">Fecha/Hora</th>
+                        <th className="p-4">Productos (Desplazable)</th>
+                        <th className="p-4">Monto Total</th>
+                        <th className="p-4">Vendedor</th>
+                        <th className="p-4 text-right pr-6">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/40 text-sm bg-black/10">
+                      {sales.slice().reverse().map((item) => (
+                        <tr key={item.id} className="hover:bg-zinc-900/50 transition-colors">
+                          <td className="p-4 pl-6 font-mono text-xs text-zinc-400">
+                            #{item.id.slice(0, 8)}...
+                          </td>
+                          <td className="p-4">
+                            <span className="text-zinc-300 font-bold block">{new Date(item.timestamp).toLocaleDateString()}</span>
+                            <span className="text-zinc-600 text-xs font-bold font-mono">{new Date(item.timestamp).toLocaleTimeString()}</span>
+                          </td>
+                          <td className="p-4 text-zinc-400">
+                            <div className="max-w-[280px] max-h-[140px] overflow-y-auto pr-2 py-1 space-y-1.5 custom-scrollbar">
+                              {item.items.map((it, idx) => (
+                                <div key={idx} className="text-xs leading-tight">
+                                  <span className="text-fuchsia-500 font-bold mr-1.5">{it.quantity}x</span> 
+                                  <span className="text-zinc-300 font-medium">{it.name}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="p-4 font-black text-white text-base">
+                            {formatCurrency(item.total)}
+                            <span className="block text-[9px] text-zinc-500 uppercase font-black mt-0.5 tracking-wider">{item.paymentMethod}</span>
+                          </td>
+                          <td className="p-4 text-zinc-300 font-medium">
+                            {item.username}
+                          </td>
+                          <td className="p-4 pr-6 text-right">
+                            <div className="flex justify-end gap-3">
+                              <button 
+                                onClick={() => setEditingPendingSale(item)}
+                                className="p-2 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl hover:border-zinc-700 transition-all"
+                                title="Editar detalles de la venta"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                              <button 
+                                onClick={async () => {
+                                  if (confirm("¿Estás seguro de que deseas eliminar permanentemente esta venta del historial local? Esta acción no se puede deshacer.")) {
+                                    await db.sales.delete(item.id);
+                                    alert("Venta eliminada del historial local.");
+                                  }
+                                }}
+                                className="p-2 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-red-500 rounded-xl hover:border-red-900/40 transition-all"
+                                title="Eliminar del historial"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* SALES DETAIL TABLE SECTION (Search and Filters) */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8">
+              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 gap-4">
+                <div>
+                  <h3 className="text-xl font-black text-white flex items-center gap-3">
+                    <FileText size={24} className="text-fuchsia-500" /> 
+                    Detalle de Ventas Históricas (Búsqueda y Filtros)
+                  </h3>
+                  <p className="text-xs text-zinc-500 mt-1">Utilizá el buscador para encontrar ventas por ID, vendedor o nombre de producto.</p>
+                </div>
+                
+                <div className="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
+                   <div className="relative flex-1 md:w-64">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={16}/>
+                      <input 
+                        type="text" 
+                        placeholder="Buscar ID, Usuario o Producto..." 
+                        className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:border-fuchsia-500 outline-none"
+                        value={salesSearch}
+                        onChange={(e) => setSalesSearch(e.target.value)}
+                      />
+                   </div>
+                   
+                   <div className="relative">
+                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"><Filter size={14} /></div>
+                     <select 
+                       className="w-full md:w-auto bg-black border border-zinc-800 rounded-xl py-2.5 pl-9 pr-8 text-sm text-white focus:border-fuchsia-500 outline-none appearance-none cursor-pointer"
+                       value={salesFilterPayment}
+                       onChange={(e) => setSalesFilterPayment(e.target.value)}
+                     >
+                       <option value="all">Todos los Métodos</option>
+                       <option value="efectivo">Efectivo</option>
+                       <option value="transferencia">Transferencia</option>
+                     </select>
+                   </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto max-h-[480px] overflow-y-auto rounded-2xl border border-zinc-800/60 custom-scrollbar relative">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-zinc-950 text-zinc-500 text-[10px] uppercase font-black tracking-widest border-b border-zinc-800 sticky top-0 z-10">
+                    <tr>
+                      <th className="p-4 rounded-tl-xl pl-6">ID Venta</th>
+                      <th className="p-4">Fecha/Hora</th>
+                      <th className="p-4">Usuario</th>
+                      <th className="p-4 w-1/3">Productos (Desplazable)</th>
+                      <th className="p-4">Pago</th>
+                      <th className="p-4 text-right rounded-tr-xl pr-6">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/50 text-sm bg-black/10">
+                    {processedSales.length === 0 ? (
+                       <tr>
+                         <td colSpan={6} className="p-8 text-center text-zinc-600 font-medium">No se encontraron ventas con los filtros actuales.</td>
+                       </tr>
+                    ) : (
+                      processedSales.map(sale => (
+                        <tr key={sale.id} className="hover:bg-zinc-800/30 transition-colors">
+                          <td className="p-4 pl-6 font-mono text-zinc-400 text-xs">#{sale.id.split('-')[1]?.slice(-6) || sale.id.slice(0,6)}</td>
+                          <td className="p-4 text-zinc-300">
+                            <div>{new Date(sale.timestamp).toLocaleDateString()}</div>
+                            <div className="text-xs text-zinc-600 font-medium">{new Date(sale.timestamp).toLocaleTimeString()}</div>
+                          </td>
+                          <td className="p-4 font-bold text-white">{sale.username}</td>
+                          <td className="p-4">
+                            <div className="max-w-[280px] max-h-[140px] overflow-y-auto pr-2 py-1 space-y-1.5 custom-scrollbar">
+                              {sale.items.map((item, idx) => (
+                                <div key={idx} className="text-xs leading-tight">
+                                  <span className="text-fuchsia-500 font-bold mr-1.5">{item.quantity}x</span> 
+                                  <span className="text-zinc-300 font-medium">{item.name}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border ${
+                              sale.paymentMethod === 'efectivo' 
+                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+                                : 'bg-violet-500/10 text-violet-500 border-violet-500/20'
+                            }`}>
+                              {sale.paymentMethod}
+                            </span>
+                          </td>
+                          <td className="p-4 text-right font-black text-white rounded-tr-xl pr-6">
+                            {formatCurrency(sale.total)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* HELP / SETTINGS TAB */}
         {activeTab === 'help' && (
            <div className="space-y-8 animate-fade-in pb-10">
@@ -1218,6 +1463,107 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  </div>
               </form>
            </div>
+        </div>
+      )}
+
+      {/* Pending Sale Edit Modal */}
+      {editingPendingSale && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
+          <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-[2rem] w-full max-w-xl shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-white">Editar Registro de Venta</h3>
+              <button onClick={() => setEditingPendingSale(null)} className="p-1.5 text-zinc-500 hover:text-white rounded-lg hover:bg-zinc-800 transition-all">
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              await db.sales.put({
+                ...editingPendingSale,
+                total: Number(editingPendingSale.total),
+                items: editingPendingSale.items
+              });
+              setEditingPendingSale(null);
+              alert("Venta actualizada con éxito en la base de datos.");
+            }} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs text-zinc-500 font-bold uppercase">ID Venta</label>
+                <input disabled className="w-full bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-3 text-zinc-500 font-mono outline-none cursor-not-allowed" value={editingPendingSale.id} />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs text-zinc-500 font-bold uppercase">Método de Pago</label>
+                <select 
+                  className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-fuchsia-500" 
+                  value={editingPendingSale.paymentMethod}
+                  onChange={e => setEditingPendingSale({
+                    ...editingPendingSale,
+                    paymentMethod: e.target.value
+                  })}
+                >
+                  <option value="efectivo">Efectivo</option>
+                  <option value="transferencia">Transferencia</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs text-zinc-500 font-bold uppercase">Monto Total ($)</label>
+                <input 
+                  type="number"
+                  min="0"
+                  className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-fuchsia-500 font-bold" 
+                  value={editingPendingSale.total}
+                  onChange={e => setEditingPendingSale({
+                    ...editingPendingSale,
+                    total: Number(e.target.value)
+                  })}
+                />
+              </div>
+
+              {/* Items List inside Edit Modal */}
+              <div className="space-y-2">
+                <label className="text-xs text-zinc-500 font-bold uppercase">Productos Vendidos</label>
+                <div className="bg-black/55 rounded-xl border border-zinc-800/80 p-4 max-h-40 overflow-y-auto space-y-2">
+                  {editingPendingSale.items.map((item: any, idx: number) => (
+                    <div key={idx} className="flex justify-between items-center text-xs">
+                      <span className="text-zinc-300">
+                        <span className="text-fuchsia-500 font-bold">{item.quantity}x</span> {item.name}
+                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-zinc-500">{formatCurrency(item.price * item.quantity)}</span>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const newItems = [...editingPendingSale.items];
+                            newItems.splice(idx, 1);
+                            const newTotal = newItems.reduce((acc: number, it: any) => acc + (it.price * it.quantity), 0);
+                            setEditingPendingSale({
+                              ...editingPendingSale,
+                              items: newItems,
+                              total: newTotal
+                            });
+                          }}
+                          className="text-red-400 hover:text-red-500 transition-all"
+                          title="Eliminar producto de la venta"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {editingPendingSale.items.length === 0 && (
+                    <p className="text-zinc-600 text-xs text-center italic">Sin productos en la venta</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-4 mt-6">
+                <button type="button" onClick={() => setEditingPendingSale(null)} className="flex-1 py-3 bg-zinc-800 text-white rounded-xl font-bold">CANCELAR</button>
+                <button type="submit" className="flex-1 py-3 bg-fuchsia-600 text-white rounded-xl font-bold hover:bg-fuchsia-500">GUARDAR CAMBIOS</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

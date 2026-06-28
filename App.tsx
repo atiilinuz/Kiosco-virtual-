@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, Suspense } from 'react';
+import React, { useState, useMemo, useRef, useEffect, Suspense, useCallback } from 'react';
 import { Store, Zap, Scan, Calculator, ShoppingCart, LogOut, Search, Filter, X, Smartphone, Wifi, WifiOff, CreditCard, CloudOff, Mail, Phone, MessageCircle, LifeBuoy, Signal, Loader2 } from 'lucide-react';
 import Header from './components/Header';
 import CategoryFilter from './components/CategoryFilter';
@@ -11,8 +11,8 @@ import ServiceRechargeModal from './components/ServiceRechargeModal';
 import Login from './components/Login';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Product, CartItem, Supplier, AppUser, LoginLog, Sale } from './types';
-import { db, initDB } from './db';
-import { useLiveQuery } from 'dexie-react-hooks'; // Importante: Asumimos dexie-react-hooks para reactividad fácil, si no, usaremos useEffect
+import { db, initDB, dbService, auth, handleFirestoreError, OperationType } from './db';
+import { useLiveQuery } from 'dexie-react-hooks';
 
 // Lazy Loading de componentes pesados
 const AdminDashboard = React.lazy(() => import('./components/AdminDashboard'));
@@ -24,7 +24,7 @@ const SERVICES = [
   { 
     id: 'sube', 
     name: 'SUBE', 
-    icon: <CreditCard size={48} className="text-blue-600" />,
+    icon: <CreditCard size={24} className="text-blue-600" />,
     color: 'from-blue-600 to-blue-800', 
     placeholder: '6061...', 
     type: 'sube' as const 
@@ -32,7 +32,7 @@ const SERVICES = [
   { 
     id: 'claro', 
     name: 'Claro', 
-    icon: <Signal size={48} className="text-red-600" />,
+    icon: <Signal size={24} className="text-red-600" />,
     color: 'from-red-600 to-red-800', 
     placeholder: '11...', 
     type: 'tel' as const 
@@ -40,7 +40,7 @@ const SERVICES = [
   { 
     id: 'movistar', 
     name: 'Movistar', 
-    icon: <Phone size={48} className="text-emerald-500" />,
+    icon: <Phone size={24} className="text-emerald-500" />,
     color: 'from-emerald-500 to-emerald-700', 
     placeholder: '11...', 
     type: 'tel' as const 
@@ -48,7 +48,7 @@ const SERVICES = [
   { 
     id: 'personal', 
     name: 'Personal', 
-    icon: <Wifi size={48} className="text-cyan-600" />,
+    icon: <Wifi size={24} className="text-cyan-600" />,
     color: 'from-cyan-500 to-blue-600', 
     placeholder: '11...', 
     type: 'tel' as const 
@@ -56,7 +56,7 @@ const SERVICES = [
   { 
     id: 'tuenti', 
     name: 'Tuenti', 
-    icon: <MessageCircle size={48} className="text-pink-600" />,
+    icon: <MessageCircle size={24} className="text-pink-600" />,
     color: 'from-pink-600 to-fuchsia-600', 
     placeholder: '11...', 
     type: 'tel' as const 
@@ -68,12 +68,12 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [isLoadingDB, setIsLoadingDB] = useState(true);
 
-  // Estados locales de datos (sincronizados con DB)
-  const [products, setProducts] = useState<Product[]>([]);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [users, setUsers] = useState<AppUser[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [loginLogs, setLoginLogs] = useState<LoginLog[]>([]);
+  // Estados locales de datos (reactivos con Dexie)
+  const products = useLiveQuery(() => db.products.toArray()) ?? [];
+  const sales = useLiveQuery(() => db.sales.toArray()) ?? [];
+  const users = useLiveQuery(() => db.users.toArray()) ?? [];
+  const suppliers = useLiveQuery(() => db.suppliers.toArray()) ?? [];
+  const loginLogs = useLiveQuery(() => db.logs.toArray()) ?? [];
 
   // Carrito (sigue en localStorage por ser volátil/sesión)
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -91,31 +91,70 @@ const AppContent: React.FC = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [rechargeService, setRechargeService] = useState<typeof SERVICES[0] | null>(null);
   const [cashClosureOpen, setCashClosureOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  
+  // No hay cola de sincronización externa pendiente en local-first
+  const pendingSyncCount = 0;
+  const isSyncing = false;
 
-  // Inicializar DB y Cargar datos
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        await initDB();
-        const [prods, sls, usrs, supps, lgs] = await Promise.all([
-          db.products.toArray(),
-          db.sales.toArray(),
-          db.users.toArray(),
-          db.suppliers.toArray(),
-          db.logs.toArray()
-        ]);
-        setProducts(prods);
-        setSales(sls);
-        setUsers(usrs);
-        setSuppliers(supps);
-        setLoginLogs(lgs);
-      } catch (err) {
-        console.error("Error loading DB", err);
-      } finally {
-        setIsLoadingDB(false);
-      }
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
-    loadData();
+  }, []);
+
+  useEffect(() => {
+    // Forzar aparición del botón si es Android y Chrome
+    const ua = navigator.userAgent.toLowerCase();
+    const isAndroid = /android/.test(ua);
+    const isChrome = /chrome/.test(ua) && !/edge|edg|opr|brave/.test(ua);
+    
+    if (isAndroid && isChrome) {
+      setShowInstallBtn(true);
+    }
+
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) {
+      // Si forzamos el botón pero el navegador no disparó el evento (ej. ya está instalada o faltan requisitos),
+      // retornamos false para que el Login muestre la guía manual.
+      return false;
+    }
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      console.log('User accepted the install prompt');
+    } else {
+      console.log('User dismissed the install prompt');
+    }
+    setDeferredPrompt(null);
+    setShowInstallBtn(false);
+    return true;
+  };
+
+  // Inicializar DB
+  useEffect(() => {
+    initDB();
+    setIsLoadingDB(false);
   }, []);
 
   // Sync Cart
@@ -123,24 +162,22 @@ const AppContent: React.FC = () => {
     localStorage.setItem('kiosco_cart', JSON.stringify(cart));
   }, [cart]);
 
-  // Funciones CRUD envolventes para actualizar estado y DB
-  const refreshProducts = async () => setProducts(await db.products.toArray());
-  const refreshUsers = async () => setUsers(await db.users.toArray());
-  const refreshSuppliers = async () => setSuppliers(await db.suppliers.toArray());
+  // Funciones obsoletas, eliminadas ya que usamos useLiveQuery
 
   // Derived state
-  const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
+  const cartCount = useMemo(() => cart.reduce((acc, item) => acc + item.quantity, 0), [cart]);
 
   const filteredProducts = useMemo(() => {
+    const term = searchTerm.toLowerCase();
     return products.filter(p => {
-      const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            (p.barcode && p.barcode.includes(searchTerm));
+      const matchesSearch = p.name.toLowerCase().includes(term) ||
+                            (p.barcode && p.barcode.includes(term));
       const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
   }, [products, searchTerm, selectedCategory]);
 
-  const handleLogin = async (user: AppUser, device: string) => {
+  const handleLogin = useCallback(async (user: AppUser, device: string) => {
     setRole(user.role === 'admin' ? 'admin' : 'user');
     setCurrentUser(user);
     
@@ -151,17 +188,16 @@ const AppContent: React.FC = () => {
         timestamp: new Date().toISOString(),
         device
     };
-    await db.logs.add(newLog);
-    setLoginLogs(await db.logs.toArray());
-  };
+    await dbService.addLog(newLog);
+  }, []);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     setRole('guest');
     setCurrentUser(null);
     setCart([]);
-  };
+  }, []);
 
-  const addToCart = (product: Product) => {
+  const addToCart = useCallback((product: Product) => {
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
@@ -175,9 +211,9 @@ const AppContent: React.FC = () => {
         searchInputRef.current.value = ''; 
         searchInputRef.current.focus();
     }
-  };
+  }, []);
 
-  const updateQuantity = (id: string, delta: number) => {
+  const updateQuantity = useCallback((id: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
         return { ...item, quantity: Math.max(0, item.quantity + delta) };
@@ -190,18 +226,18 @@ const AppContent: React.FC = () => {
         searchInputRef.current.value = ''; 
         searchInputRef.current.focus();
     }
-  };
+  }, []);
 
-  const removeFromCart = (id: string) => {
+  const removeFromCart = useCallback((id: string) => {
     setCart(prev => prev.filter(item => item.id !== id));
-  };
+  }, []);
 
-  const handleCartCheckout = () => {
+  const handleCartCheckout = useCallback(() => {
     setIsCartOpen(false);
     setIsPOSOpen(true);
-  };
+  }, []);
 
-  const handleCompleteSale = async (items: CartItem[], total: number, paymentMethod: string) => {
+  const handleCompleteSale = useCallback(async (items: CartItem[], total: number, paymentMethod: string) => {
     const newSale: Sale = {
         id: `sale-${Date.now()}`,
         userId: currentUser?.id || 'unknown',
@@ -212,20 +248,12 @@ const AppContent: React.FC = () => {
         timestamp: new Date().toISOString()
     };
     
-    // Transacción atómica
-    await (db as any).transaction('rw', db.sales, db.products, async () => {
-      await db.sales.add(newSale);
-      for (const item of items) {
-        const product = await db.products.get(item.id);
-        if (product) {
-          await db.products.update(item.id, { stock: product.stock - item.quantity });
-        }
-      }
-    });
-
-    // Actualizar estados locales
-    setSales(await db.sales.toArray());
-    setProducts(await db.products.toArray());
+    // Registrar venta y descontar stock localmente
+    try {
+      await dbService.executeSaleTransaction(newSale);
+    } catch (error) {
+      console.error("Error registrando la venta:", error);
+    }
 
     setCart([]);
     setIsPOSOpen(false);
@@ -240,9 +268,9 @@ const AppContent: React.FC = () => {
             searchInputRef.current.focus();
         }
     }, 2100);
-  };
+  }, [currentUser]);
 
-  const handleServiceRecharge = async (amount: number, method: string) => {
+  const handleServiceRecharge = useCallback(async (amount: number, method: string) => {
      const newSale: Sale = {
         id: `service-${Date.now()}`,
         userId: currentUser?.id || 'unknown',
@@ -262,52 +290,47 @@ const AppContent: React.FC = () => {
         timestamp: new Date().toISOString()
      };
      
-     await db.sales.add(newSale);
-     setSales(await db.sales.toArray());
+     // Registrar recarga virtual localmente
+     try {
+       await dbService.executeSaleTransaction(newSale);
+     } catch (error) {
+       console.error("Error registrando la recarga:", error);
+     }
 
      setShowSuccess(true);
      setSuccessMessage("RECARGA EXITOSA");
      setTimeout(() => setShowSuccess(false), 2000);
-  };
+  }, [currentUser, rechargeService]);
 
   // --- Handlers para AdminDashboard (Wrappers de DB) ---
   const handleImportProducts = async (newProds: Product[]) => {
-      await db.products.bulkPut(newProds);
-      await refreshProducts();
+      await dbService.bulkAddProducts(newProds);
   };
   const handleUpdateProduct = async (p: Product) => {
-      await db.products.put(p);
-      await refreshProducts();
+      await dbService.updateProduct(p.id, p);
   };
   const handleDeleteProduct = async (id: string) => {
-      await db.products.delete(id);
-      await refreshProducts();
+      await dbService.deleteProduct(id);
   };
   
   const handleAddSupplier = async (s: Supplier) => {
-      await db.suppliers.add(s);
-      await refreshSuppliers();
+      await dbService.addSupplier(s);
   };
   const handleUpdateSupplier = async (s: Supplier) => {
-      await db.suppliers.put(s);
-      await refreshSuppliers();
+      await dbService.updateSupplier(s.id, s);
   };
   const handleDeleteSupplier = async (id: string) => {
-      await db.suppliers.delete(id);
-      await refreshSuppliers();
+      await dbService.deleteSupplier(id);
   };
 
   const handleAddUser = async (u: AppUser) => {
-      await db.users.add(u);
-      await refreshUsers();
+      await dbService.addUser(u);
   };
   const handleUpdateUser = async (u: AppUser) => {
-      await db.users.put(u);
-      await refreshUsers();
+      await dbService.updateUser(u.id, u);
   };
   const handleDeleteUser = async (id: string) => {
-      await db.users.delete(id);
-      await refreshUsers();
+      await dbService.deleteUser(id);
   };
 
   if (isLoadingDB) {
@@ -315,7 +338,7 @@ const AppContent: React.FC = () => {
   }
 
   if (role === 'guest') {
-    return <Login users={users} onLogin={handleLogin} />;
+    return <Login users={users} onLogin={handleLogin} showInstallBtn={showInstallBtn} onInstallClick={handleInstallClick} isOnline={isOnline} />;
   }
 
   if (role === 'admin') {
@@ -337,6 +360,7 @@ const AppContent: React.FC = () => {
                 onUpdateUser={handleUpdateUser}
                 onDeleteUser={handleDeleteUser}
                 sales={sales}
+                isOnline={isOnline}
             />
         </Suspense>
     );
@@ -351,6 +375,9 @@ const AppContent: React.FC = () => {
         onOpenScanner={() => setIsScannerOpen(true)}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
+        isOnline={isOnline}
+        pendingSyncCount={pendingSyncCount}
+        isSyncing={isSyncing}
       />
 
       <main className="flex-1 overflow-y-auto p-4 pb-32">
@@ -359,8 +386,12 @@ const AppContent: React.FC = () => {
                 <h2 className="text-2xl font-black text-white">
                     Hola, <span className="text-fuchsia-500">{currentUser?.username}</span>
                 </h2>
-                <button onClick={() => setCashClosureOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-zinc-900 rounded-full text-xs font-bold text-zinc-400 hover:text-white transition-colors border border-zinc-800">
-                    <Calculator size={16} /> CIERRE DE CAJA
+                <button 
+                    onClick={() => setCashClosureOpen(true)} 
+                    className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl text-sm font-black transition-all border animate-blink-red-green hover:scale-105 active:scale-95"
+                    id="btn-cierre-caja"
+                >
+                    <Calculator size={20} className="animate-pulse" /> CIERRE DE CAJA
                 </button>
             </div>
 
@@ -385,13 +416,13 @@ const AppContent: React.FC = () => {
                 onSelectCategory={setSelectedCategory}
             />
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 md:gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 md:gap-4">
                 {SERVICES.map(service => (
                     <button
                         key={service.id}
                         onClick={() => setRechargeService(service)}
                         className={`
-                            relative h-40 md:h-48 flex flex-col items-center justify-center gap-3 p-4 rounded-[2rem] 
+                            relative h-20 md:h-24 flex flex-col items-center justify-center gap-1.5 p-2 rounded-2xl 
                             border border-zinc-800 hover:border-white/20 transition-all active:scale-95 group overflow-hidden
                             bg-gradient-to-br ${service.color} bg-opacity-10 shadow-lg
                         `}
@@ -400,12 +431,12 @@ const AppContent: React.FC = () => {
                         <div className={`absolute inset-0 bg-gradient-to-br ${service.color} opacity-10 z-0 group-hover:opacity-20 transition-opacity`}></div>
                         
                         <div className="relative z-10 w-full flex-1 flex items-center justify-center">
-                             <div className="w-20 h-20 md:w-24 md:h-24 bg-white rounded-3xl p-3 shadow-xl flex items-center justify-center transform group-hover:scale-110 transition-transform duration-300">
+                             <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-xl p-1.5 shadow-md flex items-center justify-center transform group-hover:scale-110 transition-transform duration-300">
                                 {service.icon}
                              </div>
                         </div>
 
-                        <span className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400 group-hover:text-white transition-colors">
+                        <span className="relative z-10 text-[9px] md:text-[10px] font-black uppercase tracking-widest text-zinc-400 group-hover:text-white transition-colors">
                             {service.name}
                         </span>
                     </button>

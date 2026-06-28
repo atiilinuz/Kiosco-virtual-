@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Search, Store, Zap, Scan, Maximize, Minimize } from 'lucide-react';
+import { ShoppingCart, Search, Store, Zap, Scan, Maximize, Minimize, CloudOff, Cloud, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 interface HeaderProps {
   cartCount: number;
@@ -9,9 +9,12 @@ interface HeaderProps {
   onOpenScanner: () => void;
   searchTerm: string;
   onSearchChange: (value: string) => void;
+  isOnline?: boolean;
+  pendingSyncCount?: number;
+  isSyncing?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ cartCount, onOpenCart, onOpenPOS, onOpenScanner, searchTerm, onSearchChange }) => {
+const Header: React.FC<HeaderProps> = ({ cartCount, onOpenCart, onOpenPOS, onOpenScanner, searchTerm, onSearchChange, isOnline = true, pendingSyncCount = 0, isSyncing = false }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -55,6 +58,28 @@ const Header: React.FC<HeaderProps> = ({ cartCount, onOpenCart, onOpenPOS, onOpe
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
           />
+        </div>
+
+        {/* Sync Status Indicator */}
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-zinc-800/50 bg-zinc-900/50 transition-all">
+          {!isOnline ? (
+            <>
+              <CloudOff size={16} className="text-red-400" />
+              <span className="text-xs font-medium text-red-400">
+                Offline {pendingSyncCount > 0 && `(${pendingSyncCount} pendientes)`}
+              </span>
+            </>
+          ) : isSyncing ? (
+            <>
+              <RefreshCw size={16} className="text-blue-400 animate-spin" />
+              <span className="text-xs font-medium text-blue-400">Sincronizando...</span>
+            </>
+          ) : (
+            <>
+              <Cloud size={16} className="text-emerald-500" />
+              <span className="text-xs font-medium text-emerald-500">En línea</span>
+            </>
+          )}
         </div>
 
         {/* Buttons Group */}

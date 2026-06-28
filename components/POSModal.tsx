@@ -15,8 +15,22 @@ interface POSModalProps {
 const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteSale }) => {
   const [paymentMethod, setPaymentMethod] = useState<string>('efectivo');
   const [showTicketPreview, setShowTicketPreview] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  const handleFinishPayment = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    try {
+      await onCompleteSale(items, total, paymentMethod);
+      onClose(); // Cerrar explícitamente el modal desde aquí para máxima confiabilidad
+    } catch (err) {
+      console.error("Error al finalizar el cobro:", err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -99,11 +113,21 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
           {items.length > 0 && (
             <div className="p-6 bg-zinc-950 border-t border-zinc-800 grid grid-cols-1 gap-4">
               <button 
-                onClick={() => onCompleteSale(items, total, paymentMethod)}
-                className="w-full flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-5 rounded-2xl shadow-2xl shadow-emerald-950/30 transition-all active:scale-[0.98] border border-emerald-400/20"
+                onClick={handleFinishPayment}
+                disabled={isProcessing}
+                className="w-full flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-5 rounded-2xl shadow-2xl shadow-emerald-950/30 transition-all active:scale-[0.98] border border-emerald-400/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <CheckCircle2 size={24} />
-                FINALIZAR COBRO
+                {isProcessing ? (
+                  <>
+                    <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                    PROCESANDO COBRO...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={24} />
+                    FINALIZAR COBRO
+                  </>
+                )}
               </button>
               <button 
                 onClick={() => setShowTicketPreview(true)}

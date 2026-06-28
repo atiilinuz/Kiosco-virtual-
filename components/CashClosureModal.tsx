@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { X, Calculator, Banknote, CreditCard, ShoppingBag, Calendar, User, Printer } from 'lucide-react';
+import { X, Calculator, Banknote, CreditCard, ShoppingBag, Calendar, User, Printer, FileSpreadsheet, FileText } from 'lucide-react';
 import { Sale, AppUser } from '../types';
 import { formatCurrency } from '../utils';
 
@@ -75,6 +75,109 @@ const CashClosureModal: React.FC<CashClosureModalProps> = ({ isOpen, onClose, cu
       </html>
     `);
     windowPrint.document.close();
+  };
+
+  const handleExportToExcel = () => {
+    const tableHtml = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          body { font-family: Arial, sans-serif; }
+          .title { font-size: 16px; font-weight: bold; text-align: center; background-color: #10b981; color: #ffffff; padding: 10px; }
+          .header { background-color: #18181b; color: #ffffff; font-weight: bold; }
+          td, th { border: 1px solid #e4e4e7; padding: 8px; text-align: left; }
+          .total { font-weight: bold; background-color: #f4f4f5; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr><th colspan="2" class="title">CIERRE DE CAJA - KIOSCO LAS CHICAS</th></tr>
+          <tr><td><strong>Usuario:</strong></td><td>${currentUser.username.toUpperCase()}</td></tr>
+          <tr><td><strong>Fecha y Hora:</strong></td><td>${new Date().toLocaleString()}</td></tr>
+          <tr><td><strong>Productos Vendidos:</strong></td><td>${totals.totalProducts}</td></tr>
+          <tr><td><strong>Operaciones/Ventas:</strong></td><td>${userSales.length}</td></tr>
+          <tr><td colspan="2"></td></tr>
+          <tr class="header"><th colspan="2">DETALLE DE RECAUDACIÓN</th></tr>
+          <tr><td>Efectivo:</td><td>${formatCurrency(totals.cashTotal)}</td></tr>
+          <tr><td>Transferencia / Tarjeta:</td><td>${formatCurrency(totals.transferTotal)}</td></tr>
+          <tr class="total"><td>TOTAL RECAUDADO:</td><td>${formatCurrency(totals.totalAmount)}</td></tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([tableHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `cierre_caja_${currentUser.username}_${new Date().toISOString().slice(0, 10)}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportToWord = () => {
+    const docHtml = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .title { font-size: 20px; font-weight: bold; text-align: center; color: #d946ef; border-bottom: 2px solid #d946ef; padding-bottom: 10px; margin-bottom: 20px; }
+          .section { font-size: 14px; font-weight: bold; margin-top: 20px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+          td, th { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 12px; }
+          th { background-color: #f3f4f6; }
+          .total { font-size: 16px; font-weight: bold; color: #111827; background-color: #f9fafb; }
+        </style>
+      </head>
+      <body>
+        <div class="title">REPORTE DE CIERRE DE CAJA</div>
+        <p><strong>Operador:</strong> ${currentUser.username.toUpperCase()}</p>
+        <p><strong>Fecha de Emisión:</strong> ${new Date().toLocaleString()}</p>
+        <p><strong>Cantidad de Ventas realizadas:</strong> ${userSales.length}</p>
+        <p><strong>Cantidad total de productos vendidos:</strong> ${totals.totalProducts}</p>
+        
+        <div class="section">Resumen de Caja</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Concepto de Pago</th>
+              <th>Monto</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Efectivo</td>
+              <td>${formatCurrency(totals.cashTotal)}</td>
+            </tr>
+            <tr>
+              <td>Transferencia / Tarjeta / Otros</td>
+              <td>${formatCurrency(totals.transferTotal)}</td>
+            </tr>
+            <tr class="total">
+              <td><strong>Total General Recaudado</strong></td>
+              <td><strong>${formatCurrency(totals.totalAmount)}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <p style="margin-top: 40px; text-align: center; font-size: 10px; color: #666;">
+          SISTEMA KIOSCO LAS CHICAS - Reporte de cierre autogenerado para control interno.
+        </p>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([docHtml], { type: 'application/msword;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `cierre_caja_${currentUser.username}_${new Date().toISOString().slice(0, 10)}.doc`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -157,16 +260,38 @@ const CashClosureModal: React.FC<CashClosureModalProps> = ({ isOpen, onClose, cu
           </div>
         </div>
 
-        <div className="p-8 bg-zinc-950/50 border-t border-zinc-800 grid grid-cols-1 gap-4">
+        <div className="p-8 bg-zinc-950/50 border-t border-zinc-800 flex flex-col gap-4">
           <button 
             onClick={handlePrintClosure}
-            className="flex items-center justify-center gap-3 bg-white text-black font-black py-5 rounded-2xl shadow-xl transition-all active:scale-[0.98] hover:bg-zinc-100"
+            className="w-full flex items-center justify-center gap-3 bg-white text-black font-black py-5 rounded-2xl shadow-xl transition-all active:scale-[0.98] hover:bg-zinc-100"
           >
             <Printer size={22} />
             IMPRIMIR REPORTE DE CIERRE
           </button>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <button 
+              onClick={handleExportToExcel}
+              className="flex items-center justify-center gap-2 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 font-bold py-4 px-4 rounded-xl border border-emerald-500/25 transition-all active:scale-[0.98]"
+              id="btn-export-excel"
+              title="Exportar cierre de caja a un archivo Excel (.xls)"
+            >
+              <FileSpreadsheet size={20} />
+              <span className="text-xs uppercase tracking-wider font-bold">Exportar Excel</span>
+            </button>
+            <button 
+              onClick={handleExportToWord}
+              className="flex items-center justify-center gap-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 font-bold py-4 px-4 rounded-xl border border-blue-500/25 transition-all active:scale-[0.98]"
+              id="btn-export-word"
+              title="Exportar cierre de caja a un archivo Word (.doc)"
+            >
+              <FileText size={20} />
+              <span className="text-xs uppercase tracking-wider font-bold">Exportar Word</span>
+            </button>
+          </div>
+
           <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest font-bold">
-            Al imprimir el reporte, asegúrese de entregarlo al administrador
+            Al imprimir o exportar el reporte, asegúrese de entregarlo al administrador
           </p>
         </div>
       </div>
