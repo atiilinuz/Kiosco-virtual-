@@ -193,7 +193,7 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen, onClo
                ) : (
                  scannedItems.map(item => (
                    <div key={item.id} className="bg-black/40 p-3 rounded-2xl flex items-center gap-3 border border-zinc-800/50">
-                     <img src={item.image} alt={item.name} className="w-12 h-12 rounded-lg object-cover bg-zinc-800" />
+                     <img src={item.image || undefined} alt={item.name} className="w-12 h-12 rounded-lg object-cover bg-zinc-800" />
                      <div className="flex-1 min-w-0">
                        <p className="text-white font-bold text-sm truncate">{item.name}</p>
                        <p className="text-fuchsia-400 font-bold text-xs">{formatCurrency(item.price * item.quantity)}</p>

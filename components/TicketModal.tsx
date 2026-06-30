@@ -18,10 +18,28 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, items, total
   const time = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
   const handleNativePrint = () => {
-    const windowPrint = window.open('', '', 'width=400,height=600');
-    if (!windowPrint) return;
+    // Eliminar iframe previo si existe
+    let iframe = document.getElementById('print-iframe') as HTMLIFrameElement;
+    if (iframe) {
+      iframe.parentNode?.removeChild(iframe);
+    }
 
-    windowPrint.document.write(`
+    // Crear un iframe oculto en el documento actual
+    iframe = document.createElement('iframe');
+    iframe.id = 'print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) return;
+
+    doc.open();
+    doc.write(`
       <html>
         <head>
           <title>Ticket Kiosco</title>
@@ -65,12 +83,6 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, items, total
             
             .total-section { margin-top: 10px; font-size: 16px; }
             .footer { margin-top: 15px; font-size: 10px; text-transform: uppercase; }
-            
-            /* Utilidad para ocultar elementos si es necesario */
-            @media screen {
-               body { background: #eee; display: flex; justify-content: center; }
-               .ticket { background: #fff; padding: 10px; box-shadow: 0 0 5px rgba(0,0,0,0.2); }
-            }
           </style>
         </head>
         <body>
@@ -112,20 +124,18 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, items, total
             <p style="margin:0">GRACIAS POR SU COMPRA</p>
             <p style="margin:5px 0 0 0; font-size: 9px;">NO VÁLIDO COMO FACTURA FISCAL</p>
           </div>
-
-          <script>
-            // Auto imprimir y cerrar
-            window.onload = function() { 
-                window.focus();
-                window.print(); 
-                // Pequeño delay para asegurar que el comando de impresión se envió
-                setTimeout(function() { window.close(); }, 500); 
-            }
-          </script>
         </body>
       </html>
     `);
-    windowPrint.document.close();
+    doc.close();
+
+    // Disparar la impresión nativa enfocando el iframe oculto
+    setTimeout(() => {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      }
+    }, 300);
   };
 
   return (

@@ -69,7 +69,7 @@ const AIRecommender: React.FC<AIRecommenderProps> = ({ onAddToCart }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {recommendedProducts.map((p) => (
                 <div key={p.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 flex items-center gap-4 text-slate-100 group hover:border-fuchsia-500/30 hover:shadow-lg transition-all">
-                  <img src={p.image} className="w-14 h-14 rounded-lg object-cover" alt={p.name} />
+                  <img src={p.image || undefined} className="w-14 h-14 rounded-lg object-cover" alt={p.name} />
                   <div className="flex-1">
                     <h4 className="font-bold text-sm line-clamp-1">{p.name}</h4>
                     <p className="text-violet-400 font-bold text-sm">${p.price}</p>

@@ -53,7 +53,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
             items.map((item) => (
               <div key={item.id} className="flex gap-4 p-4 bg-zinc-900/30 rounded-[2rem] border border-white/5 group hover:border-fuchsia-500/30 transition-all duration-300">
                 <div className="relative">
-                  <img src={item.image} alt={item.name} className="w-16 h-16 rounded-2xl object-cover border border-white/5" />
+                  <img src={item.image || undefined} alt={item.name} className="w-16 h-16 rounded-2xl object-cover border border-white/5" />
                   <div className="absolute -top-2 -right-2 bg-fuchsia-600 text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-zinc-950">
                     {item.quantity}
                   </div>

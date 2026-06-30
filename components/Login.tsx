@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Lock, User, Store, AlertCircle, Download, HelpCircle, ChevronRight, MoreVertical, PlusSquare, Smartphone, X, Eye, EyeOff } from 'lucide-react';
+import { Lock, User, Store, AlertCircle, Download, HelpCircle, ChevronRight, MoreVertical, PlusSquare, Smartphone, X, Eye, EyeOff, Laptop, Tablet } from 'lucide-react';
 import { AppUser } from '../types';
 import { verifyPassword } from '../utils';
 
@@ -17,6 +17,7 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, showInstallBtn, onInstall
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [showGuide, setShowGuide] = useState(false);
+  const [guideTab, setGuideTab] = useState<'android' | 'pc' | 'ios'>('android');
   const [verifying, setVerifying] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const timeoutRef = useRef<any>(null);
@@ -164,27 +165,64 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, showInstallBtn, onInstall
 
           <div className="space-y-3">
             {showInstallBtn ? (
-              <button 
-                onClick={async () => {
-                  if (onInstallClick) {
-                    const handled = await onInstallClick();
-                    if (!handled) setShowGuide(true);
-                  }
-                }}
-                className="w-full group relative overflow-hidden bg-white text-black font-black py-4 rounded-2xl transition-all shadow-xl hover:bg-zinc-100 active:scale-95 flex items-center justify-center gap-3"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <Download size={22} className="text-emerald-600 group-hover:animate-bounce" />
-                <span className="text-sm">DESCARGAR APP (ANDROID/APK)</span>
-              </button>
+              <>
+                <button 
+                  onClick={async () => {
+                    if (onInstallClick) {
+                      const handled = await onInstallClick();
+                      if (!handled) {
+                        setGuideTab('android');
+                        setShowGuide(true);
+                      }
+                    }
+                  }}
+                  className="w-full group relative overflow-hidden bg-white text-black font-black py-4 rounded-2xl transition-all shadow-xl hover:bg-zinc-100 active:scale-95 flex items-center justify-center gap-3"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <Download size={22} className="text-emerald-600 group-hover:animate-bounce" />
+                  <span className="text-sm">DESCARGAR APP (ANDROID/APK)</span>
+                </button>
+
+                <button 
+                  onClick={async () => {
+                    if (onInstallClick) {
+                      const handled = await onInstallClick();
+                      if (!handled) {
+                        setGuideTab('pc');
+                        setShowGuide(true);
+                      }
+                    }
+                  }}
+                  className="w-full group relative overflow-hidden bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white font-black py-4 rounded-2xl transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3 border border-fuchsia-400/20"
+                >
+                  <Laptop size={22} className="text-white group-hover:animate-pulse" />
+                  <span className="text-sm">DESCARGAR APP (PC / TABLET / OFFLINE)</span>
+                </button>
+              </>
             ) : (
-              <button 
-                onClick={() => setShowGuide(true)}
-                className="w-full bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-white py-4 rounded-2xl border border-zinc-800 transition-all flex items-center justify-center gap-2 group"
-              >
-                <HelpCircle size={18} className="text-fuchsia-500" />
-                <span className="text-xs font-bold uppercase tracking-widest">¿Cómo instalar en mi celular?</span>
-              </button>
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  onClick={() => {
+                    setGuideTab('android');
+                    setShowGuide(true);
+                  }}
+                  className="bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-white py-4 rounded-2xl border border-zinc-800 transition-all flex flex-col items-center justify-center gap-1.5 group text-center px-2"
+                >
+                  <Smartphone size={18} className="text-emerald-500 group-hover:scale-110 transition-transform" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Instalar Celular</span>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setGuideTab('pc');
+                    setShowGuide(true);
+                  }}
+                  className="bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-white py-4 rounded-2xl border border-zinc-800 transition-all flex flex-col items-center justify-center gap-1.5 group text-center px-2"
+                >
+                  <Laptop size={18} className="text-fuchsia-500 group-hover:scale-110 transition-transform" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Instalar PC / Tablet</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -192,51 +230,140 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, showInstallBtn, onInstall
 
       {showGuide && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setShowGuide(false)} />
-          <div className="relative bg-zinc-900 border border-zinc-800 p-8 rounded-[2.5rem] w-full max-w-sm shadow-2xl animate-fade-in text-white">
-            <button onClick={() => setShowGuide(false)} className="absolute top-6 right-6 text-zinc-500 hover:text-white">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setShowGuide(false)} />
+          <div className="relative bg-zinc-900 border border-zinc-800 p-6 md:p-8 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-fade-in text-white z-10">
+            <button onClick={() => setShowGuide(false)} className="absolute top-6 right-6 text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-colors">
               <X size={24} />
             </button>
             
-            <div className="text-center mb-8">
-              <div className="mx-auto w-16 h-16 bg-fuchsia-500/10 rounded-2xl flex items-center justify-center mb-4">
-                <Smartphone className="text-fuchsia-500" size={32} />
+            <div className="text-center mb-6">
+              <div className="mx-auto w-12 h-12 bg-fuchsia-500/10 rounded-2xl flex items-center justify-center mb-3">
+                <Download className="text-fuchsia-500 animate-bounce" size={24} />
               </div>
-              <h3 className="text-xl font-black">Guía de Instalación</h3>
-              <p className="text-zinc-500 text-sm mt-1">Sigue estos pasos para tener la app</p>
+              <h3 className="text-xl font-black">Guía de Instalación Local</h3>
+              <p className="text-zinc-500 text-xs mt-1">Sigue los pasos para descargar la app y usarla 100% offline sin internet.</p>
             </div>
 
-            <div className="space-y-6">
-              <div className="flex gap-4 items-start">
-                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-fuchsia-500 shrink-0">1</div>
-                <div>
-                  <p className="text-sm font-bold">Abre el menú de Chrome</p>
-                  <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1">Toca los 3 puntos <MoreVertical size={14} /> en la esquina superior.</p>
-                </div>
-              </div>
+            {/* Tabs */}
+            <div className="grid grid-cols-3 bg-black/40 p-1 rounded-xl border border-zinc-800/80 mb-6">
+              <button 
+                type="button"
+                onClick={() => setGuideTab('android')}
+                className={`py-2 text-[11px] font-black uppercase rounded-lg flex flex-col items-center gap-1 transition-all ${guideTab === 'android' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                <Smartphone size={16} />
+                Android
+              </button>
+              <button 
+                type="button"
+                onClick={() => setGuideTab('pc')}
+                className={`py-2 text-[11px] font-black uppercase rounded-lg flex flex-col items-center gap-1 transition-all ${guideTab === 'pc' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                <Laptop size={16} />
+                Computadora
+              </button>
+              <button 
+                type="button"
+                onClick={() => setGuideTab('ios')}
+                className={`py-2 text-[11px] font-black uppercase rounded-lg flex flex-col items-center gap-1 transition-all ${guideTab === 'ios' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                <Tablet size={16} />
+                iPad / iOS
+              </button>
+            </div>
 
-              <div className="flex gap-4 items-start">
-                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-fuchsia-500 shrink-0">2</div>
-                <div>
-                  <p className="text-sm font-bold">Instalar Aplicación</p>
-                  <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1">Busca la opción "Instalar aplicación" o "Agregar a pantalla de inicio" <PlusSquare size={14} />.</p>
-                </div>
-              </div>
+            {/* Guide Content */}
+            <div className="space-y-5">
+              {guideTab === 'android' && (
+                <>
+                  <div className="flex gap-4 items-start">
+                    <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-fuchsia-500 text-xs shrink-0">1</div>
+                    <div>
+                      <p className="text-sm font-bold">Abre Chrome / Edge</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">Toca el botón de 3 puntos <MoreVertical size={12} className="inline mx-0.5 text-zinc-400" /> en la esquina superior derecha.</p>
+                    </div>
+                  </div>
 
-              <div className="flex gap-4 items-start">
-                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-fuchsia-500 shrink-0">3</div>
-                <div>
-                  <p className="text-sm font-bold">¡Listo!</p>
-                  <p className="text-xs text-zinc-500 mt-1">Aparecerá el icono en tu escritorio como cualquier otra app.</p>
-                </div>
-              </div>
+                  <div className="flex gap-4 items-start">
+                    <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-fuchsia-500 text-xs shrink-0">2</div>
+                    <div>
+                      <p className="text-sm font-bold">Instalar Aplicación</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">Selecciona la opción <span className="text-zinc-300 font-semibold">"Instalar aplicación"</span> o <span className="text-zinc-300 font-semibold">"Agregar a la pantalla de inicio"</span> <PlusSquare size={12} className="inline mx-0.5 text-zinc-400" />.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 items-start">
+                    <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-fuchsia-500 text-xs shrink-0">3</div>
+                    <div>
+                      <p className="text-sm font-bold">¡Listo!</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">Se creará un acceso directo en tu celular o tablet. La app guardará las ventas localmente en IndexedDB y sincronizará al recuperar internet.</p>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {guideTab === 'pc' && (
+                <>
+                  <div className="flex gap-4 items-start">
+                    <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-fuchsia-500 text-xs shrink-0">1</div>
+                    <div>
+                      <p className="text-sm font-bold">Busca el Icono de Instalación</p>
+                      <p className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1 flex-wrap">En la barra de direcciones (donde está la URL), al extremo derecho verás un icono de computadora con una flecha hacia abajo <Download size={12} className="text-fuchsia-500 inline animate-pulse" />.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 items-start">
+                    <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-fuchsia-500 text-xs shrink-0">2</div>
+                    <div>
+                      <p className="text-sm font-bold">Menú del Navegador</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">Si no ves el icono, haz clic en el menú de 3 puntos <MoreVertical size={12} className="inline mx-0.5 text-zinc-400" /> de Chrome/Edge, selecciona <span className="text-zinc-300 font-semibold">"Guardar y compartir"</span> y luego <span className="text-zinc-300 font-semibold">"Instalar Kiosco Digital..."</span>.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 items-start">
+                    <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-fuchsia-500 text-xs shrink-0">3</div>
+                    <div>
+                      <p className="text-sm font-bold">Uso 100% Offline</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">La app se abrirá en una ventana propia, independiente del navegador. Toda la base de datos se guarda de forma segura en tu disco duro (IndexedDB).</p>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {guideTab === 'ios' && (
+                <>
+                  <div className="flex gap-4 items-start">
+                    <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-fuchsia-500 text-xs shrink-0">1</div>
+                    <div>
+                      <p className="text-sm font-bold">Usa el Navegador Safari</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">Abre esta página web exclusivamente en <span className="text-zinc-300 font-semibold">Safari</span> en tu iPad o iPhone.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 items-start">
+                    <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-fuchsia-500 text-xs shrink-0">2</div>
+                    <div>
+                      <p className="text-sm font-bold">Botón Compartir</p>
+                      <p className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1 flex-wrap">Toca el botón <span className="text-zinc-300 font-semibold">"Compartir"</span> (icono de un cuadrado con una flecha hacia arriba) en la barra de Safari.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 items-start">
+                    <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-fuchsia-500 text-xs shrink-0">3</div>
+                    <div>
+                      <p className="text-sm font-bold">Agregar a Pantalla de Inicio</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">Busca y presiona <span className="text-zinc-300 font-semibold">"Agregar a pantalla de inicio"</span>. ¡Listo! Ya puedes ejecutarla sin internet desde tu pantalla principal.</p>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <button 
               onClick={() => setShowGuide(false)}
-              className="w-full mt-10 bg-fuchsia-600 py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-lg shadow-fuchsia-900/20"
+              className="w-full mt-8 bg-gradient-to-r from-fuchsia-600 to-violet-600 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-fuchsia-900/20 hover:from-fuchsia-500 hover:to-violet-500 transition-all"
             >
-              ENTENDIDO
+              ¡ENTENDIDO, A DISFRUTAR!
             </button>
           </div>
         </div>

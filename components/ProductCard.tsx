@@ -26,7 +26,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
       {/* Imagen reducida y estilizada con Lazy Loading */}
       <div className="relative aspect-[16/9] overflow-hidden bg-zinc-950">
         <img 
-          src={product.image} 
+          src={product.image || undefined} 
           alt={product.name}
           loading="lazy"
           className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-80 group-hover:opacity-100 ${isOutOfStock ? 'grayscale' : ''}`}

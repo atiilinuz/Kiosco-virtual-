@@ -40,15 +40,33 @@ const CashClosureModal: React.FC<CashClosureModalProps> = ({ isOpen, onClose, cu
   });
 
   const handlePrintClosure = () => {
-    const windowPrint = window.open('', '', 'width=600,height=600');
-    if (!windowPrint) return;
+    // Eliminar iframe previo si existe
+    let iframe = document.getElementById('print-iframe') as HTMLIFrameElement;
+    if (iframe) {
+      iframe.parentNode?.removeChild(iframe);
+    }
 
-    windowPrint.document.write(`
+    // Crear iframe oculto
+    iframe = document.createElement('iframe');
+    iframe.id = 'print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) return;
+
+    doc.open();
+    doc.write(`
       <html>
         <head>
           <title>Cierre de Caja - ${currentUser.username}</title>
           <style>
-            body { font-family: 'Courier New', monospace; padding: 20px; font-size: 14px; }
+            body { font-family: 'Courier New', monospace; padding: 20px; font-size: 14px; color: #000; background: #fff; }
             .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 20px; }
             .stat { display: flex; justify-content: space-between; margin-bottom: 10px; }
             .total { font-size: 20px; font-weight: bold; border-top: 1px dashed #000; padding-top: 10px; margin-top: 10px; }
@@ -70,11 +88,18 @@ const CashClosureModal: React.FC<CashClosureModalProps> = ({ isOpen, onClose, cu
             SISTEMA KIOSCO LAS CHICAS<br>
             --------------------------
           </div>
-          <script>window.print(); window.close();</script>
         </body>
       </html>
     `);
-    windowPrint.document.close();
+    doc.close();
+
+    // Disparar impresión nativa enfocando el iframe oculto
+    setTimeout(() => {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      }
+    }, 300);
   };
 
   const handleExportToExcel = () => {

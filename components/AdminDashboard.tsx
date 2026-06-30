@@ -6,7 +6,7 @@ import {
   PlusCircle, Scan, Image as ImageIcon, X, LayoutGrid, 
   User, Shield, Pencil, Trash2, Upload, Tag, AlignLeft, 
   Search, List, Layers, Clock, Smartphone, MapPin, Phone, 
-  Download, PieChart, Layout, Mail, ShieldAlert, Key,
+  Download, Layout, Mail, ShieldAlert, Key,
   Barcode, Type, FileText, Camera, Info, HelpCircle, Code2,
   MessageCircle, ExternalLink, LifeBuoy, Zap, ChevronRight,
   MonitorSmartphone, Printer, Calculator, Sparkles,
@@ -22,6 +22,23 @@ import { Product, Supplier, AppUser, LoginLog, Sale } from '../types';
 import { CATEGORIES } from '../constants';
 import { formatCurrency, compressImage, hashPassword } from '../utils';
 import { dbService } from '../db';
+import { 
+  ResponsiveContainer, 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  Tooltip as RechartsTooltip, 
+  CartesianGrid,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  Cell,
+  PieChart,
+  Pie
+} from 'recharts';
+import { jsPDF } from 'jspdf';
 
 interface AdminDashboardProps {
   onLogout: () => void;
@@ -148,6 +165,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [salesSortConfig, setSalesSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'timestamp', direction: 'desc' });
 
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [showTopProductsModal, setShowTopProductsModal] = useState(false);
+  const [topProductsSearch, setTopProductsSearch] = useState('');
   
   const [manualProduct, setManualProduct] = useState({
     barcode: '', name: '', category: 'golosinas', description: '', price: '', stock: '', image: ''
@@ -162,22 +181,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // --- Handlers para Backup y Restore ---
   const handleBackup = async () => {
     try {
+      // Obtener datos directamente de IndexedDB (Dexie) para un respaldo 100% completo y seguro
+      const allProducts = await db.products.toArray();
+      const allSales = await db.sales.toArray();
+      const allUsers = await db.users.toArray();
+      const allSuppliers = await db.suppliers.toArray();
+      const allLogs = await db.logs.toArray();
+
       const allData = {
-        products: products,
-        sales: sales,
-        users: users,
-        suppliers: suppliers,
-        timestamp: new Date().toISOString()
+        products: allProducts,
+        sales: allSales,
+        users: allUsers,
+        suppliers: allSuppliers,
+        logs: allLogs,
+        timestamp: new Date().toISOString(),
+        version: "2.9.1"
       };
       
-      const blob = new Blob([JSON.stringify(allData)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.download = `backup_kiosco_${new Date().toISOString().split('T')[0]}.json`;
       link.click();
+      URL.revokeObjectURL(url);
     } catch (e) {
-      alert("Error al generar backup");
+      alert("Error al generar backup: " + (e instanceof Error ? e.message : String(e)));
     }
   };
 
@@ -198,6 +227,127 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       };
       reader.readAsText(file);
+    }
+  };
+
+  const handleExportPDF = () => {
+    try {
+      const doc = new jsPDF();
+      
+      // Setup styles & colors (fuchsia/indigo look for the PDF headers)
+      doc.setFillColor(24, 24, 27); // zinc-900 background block at top
+      doc.rect(0, 0, 210, 42, "F");
+      
+      // Top header border line in fuchsia
+      doc.setFillColor(217, 70, 239); 
+      doc.rect(0, 40, 210, 2, "F");
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.text("Kiosco Digital Las Chicas", 15, 18);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(161, 161, 170); // zinc-400
+      doc.text("Reporte Completo de Productos Más Vendidos", 15, 26);
+      doc.text(`Generado el: ${new Date().toLocaleDateString()} a las ${new Date().toLocaleTimeString()}`, 15, 32);
+      
+      // Report Content
+      doc.setTextColor(24, 24, 27);
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text("RANKING DE VENTAS GENERAL", 15, 54);
+      
+      // Draw a line
+      doc.setDrawColor(212, 212, 216); // zinc-300
+      doc.setLineWidth(0.5);
+      doc.line(15, 57, 195, 57);
+      
+      // Draw table headers
+      doc.setFillColor(244, 244, 245); // zinc-100
+      doc.rect(15, 62, 180, 8, "F");
+      
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(63, 63, 70); // zinc-700
+      doc.text("POS", 18, 67);
+      doc.text("PRODUCTO", 35, 67);
+      doc.text("CANT. VENDIDA", 120, 67);
+      doc.text("INGRESOS ESTIMADOS", 160, 67);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(39, 39, 42); // zinc-800
+      let y = 77;
+      
+      const listToPrint = statsCalculations.allSoldProducts.slice(0, 15);
+      
+      listToPrint.forEach((prod, index) => {
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+          // Redraw headers on new page
+          doc.setFillColor(244, 244, 245);
+          doc.rect(15, y - 5, 180, 8, "F");
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(63, 63, 70);
+          doc.text("POS", 18, y);
+          doc.text("PRODUCTO", 35, y);
+          doc.text("CANT. VENDIDA", 120, y);
+          doc.text("INGRESOS ESTIMADOS", 160, y);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(39, 39, 42);
+          y += 10;
+        }
+        
+        // Alternate rows background
+        if (index % 2 === 1) {
+          doc.setFillColor(250, 250, 250);
+          doc.rect(15, y - 5, 180, 7, "F");
+        }
+        
+        doc.text(`#${index + 1}`, 18, y);
+        doc.text(prod.name.substring(0, 42), 35, y);
+        doc.text(String(prod.qty), 125, y);
+        doc.text(formatCurrency(prod.total), 160, y);
+        
+        y += 8;
+      });
+
+      // Draw simple embedded visual chart of Top 5 at the end
+      if (y + 50 <= 270) {
+        y += 10;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(24, 24, 27);
+        doc.text("GRÁFICO: TOP 5 PRODUCTOS MÁS VENDIDOS (UNIDADES)", 15, y);
+        y += 4;
+        doc.setDrawColor(212, 212, 216);
+        doc.line(15, y, 195, y);
+        y += 10;
+        
+        const top5 = statsCalculations.allSoldProducts.slice(0, 5);
+        const maxQty = top5[0]?.qty || 1;
+        
+        top5.forEach((prod, idx) => {
+          const barWidth = (prod.qty / maxQty) * 110; // scale to max width 110mm
+          doc.setFillColor(168, 85, 247); // purple-500 color bar
+          doc.rect(55, y - 4, barWidth, 4.5, "F");
+          
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(8);
+          doc.setTextColor(63, 63, 70);
+          doc.text(prod.name.substring(0, 22), 15, y);
+          
+          doc.setFont("helvetica", "normal");
+          doc.text(`${prod.qty} uds`, 55 + barWidth + 3, y);
+          y += 7.5;
+        });
+      }
+      
+      doc.save(`top_ventas_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (error) {
+      alert("Error generating PDF: " + (error instanceof Error ? error.message : String(error)));
     }
   };
 
@@ -289,22 +439,60 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     const topProducts = Object.values(productSales)
       .sort((a, b) => b.qty - a.qty)
-      .slice(0, 10);
+      .slice(0, 5);
+
+    const allSoldProducts = Object.values(productSales)
+      .sort((a, b) => b.qty - a.qty);
 
     const maxDayTotal = Math.max(...salesByDay.map(d => d.total), 1);
     const bestDay = [...salesByDay].sort((a, b) => b.total - a.total)[0];
+
+    // Comportamiento de ventas por hora durante el día actual
+    const hourlySalesToday = Array.from({ length: 24 }, (_, i) => ({
+      hour: `${i.toString().padStart(2, '0')}:00`,
+      total: 0,
+      count: 0
+    }));
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    sales.forEach(sale => {
+      const saleDate = new Date(sale.timestamp);
+      if (saleDate >= todayStart && saleDate <= todayEnd) {
+        const hour = saleDate.getHours();
+        hourlySalesToday[hour].total += sale.total;
+        hourlySalesToday[hour].count += 1;
+      }
+    });
+
+    // Distribución del catálogo de productos
+    const categoryDistribution: Record<string, number> = {};
+    products.forEach(p => {
+      const cat = p.category || 'Sin Categoría';
+      categoryDistribution[cat] = (categoryDistribution[cat] || 0) + 1;
+    });
+    const categoryData = Object.entries(categoryDistribution).map(([name, value]) => ({
+      name,
+      value
+    })).sort((a, b) => b.value - a.value);
 
     return { 
       revenue, 
       orders, 
       averageTicket, 
       topProducts, 
+      allSoldProducts,
       salesByTime, 
       salesByDay, 
       maxDayTotal, 
-      bestDay 
+      bestDay,
+      hourlySalesToday,
+      categoryData
     };
-  }, [filteredSales]);
+  }, [filteredSales, sales, products]);
 
   const processedSales = useMemo(() => {
     let result = [...sales];
@@ -458,31 +646,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   return (
     <div className="min-h-screen bg-black text-zinc-100 flex">
       {/* Sidebar Navigation */}
-      <aside className="w-20 md:w-64 border-r border-zinc-800 bg-black flex flex-col fixed h-full z-50">
-        <div className="p-6 flex flex-col gap-2 border-b border-zinc-900 mb-4 shrink-0">
-          <div className="flex items-center gap-3 text-fuchsia-500">
-            <div className="bg-fuchsia-500/10 p-2 rounded-xl shrink-0">
-               <Shield size={24} />
+      <aside className="w-20 border-r border-zinc-800 bg-black flex flex-col fixed h-full z-50">
+        <div className="p-4 flex flex-col items-center gap-3 border-b border-zinc-900 mb-4 shrink-0">
+          <div className="flex items-center text-fuchsia-500" title="Admin Panel">
+            <div className="bg-fuchsia-500/10 p-2.5 rounded-xl shrink-0 hover:scale-105 transition-transform">
+               <Shield size={22} />
             </div>
-            <span className="font-black text-xl hidden md:inline tracking-tight">Admin<span className="text-white">Panel</span></span>
           </div>
-          {/* Status Indicator */}
-          <div className="mt-2 flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-zinc-800/50 bg-zinc-900/40 transition-all select-none self-start md:self-stretch">
+          {/* Status Indicator (Centered Dot) */}
+          <div className="flex items-center justify-center p-1.5 rounded-full border border-zinc-800 bg-zinc-900/40 select-none" title={isOnline ? "En línea" : "Modo Local"}>
             {isOnline ? (
-              <>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest hidden md:inline">En línea</span>
-              </>
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
             ) : (
-              <>
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0"></span>
-                <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest hidden md:inline">Modo Local</span>
-              </>
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0"></span>
             )}
           </div>
         </div>
         
-        <nav className="flex-1 space-y-2 px-2">
+        <nav className="flex-1 space-y-2 px-2.5">
           {[
             { id: 'stats', label: 'Estadísticas', icon: <BarChart3 size={20} /> },
             { id: 'inventory', label: 'Inventario', icon: <Package size={20} /> },
@@ -494,31 +675,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id as any)}
-              className={`w-full flex items-center gap-3 p-4 rounded-2xl transition-all font-medium ${
+              className={`w-full flex items-center justify-center py-3 rounded-xl transition-all ${
                 activeTab === item.id 
                   ? 'bg-zinc-900 text-white border border-zinc-800 shadow-lg' 
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/50'
               }`}
+              title={item.label}
             >
               {item.icon}
-              <span className="hidden md:inline">{item.label}</span>
             </button>
           ))}
         </nav>
 
-        <div className="p-4 border-t border-zinc-800">
+        <div className="p-3.5 border-t border-zinc-900">
           <button 
             onClick={onLogout}
-            className="w-full flex items-center gap-3 p-4 rounded-2xl text-red-400 hover:bg-red-500/10 hover:text-red-500 transition-all font-medium"
+            className="w-full flex items-center justify-center py-3 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-500 transition-all"
+            title="Cerrar Sesión"
           >
             <LogOut size={20} />
-            <span className="hidden md:inline">Cerrar Sesión</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-20 md:ml-64 p-4 md:p-8 max-w-[1600px] mx-auto relative">
+      <main className="flex-1 ml-20 p-4 md:p-8 max-w-[1600px] mx-auto relative">
         
         {/* STATS TAB */}
         {activeTab === 'stats' && (
@@ -528,18 +709,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  <h1 className="text-3xl font-black text-white">Panel de Control</h1>
                  <p className="text-zinc-500 mt-1">Resumen de operaciones y rendimiento</p>
               </div>
-              <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800">
-                {(['day', 'week', 'month'] as const).map((period) => (
-                  <button
-                    key={period}
-                    onClick={() => setStatsPeriod(period)}
-                    className={`px-6 py-2 rounded-xl text-sm font-bold capitalize transition-all ${
-                      statsPeriod === period ? 'bg-zinc-800 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'
-                    }`}
-                  >
-                    {period === 'day' ? 'Hoy' : period === 'week' ? 'Semana' : 'Mes'}
-                  </button>
-                ))}
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => setShowTopProductsModal(true)}
+                  className="bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-black font-black text-xs md:text-sm px-5 py-2.5 rounded-xl transition-all active:scale-[0.98] shadow-lg shadow-yellow-900/10 flex items-center gap-2"
+                >
+                  <Trophy size={16} />
+                  PRODUCTOS MÁS VENDIDOS
+                </button>
+                <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800">
+                  {(['day', 'week', 'month'] as const).map((period) => (
+                    <button
+                      key={period}
+                      onClick={() => setStatsPeriod(period)}
+                      className={`px-4 py-2 rounded-xl text-xs md:text-sm font-bold capitalize transition-all ${
+                        statsPeriod === period ? 'bg-zinc-800 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {period === 'day' ? 'Hoy' : period === 'week' ? 'Semana' : 'Mes'}
+                    </button>
+                  ))}
+                </div>
               </div>
             </header>
 
@@ -564,95 +754,227 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               />
             </div>
 
+            {/* TOP 5 AND COMPACT CATALOG */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-              {/* RANKING CHART */}
-              <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8">
-                <div className="flex items-center gap-3 mb-8">
-                   <div className="p-3 bg-yellow-500/10 rounded-2xl text-yellow-500 border border-yellow-500/20">
-                     <Trophy size={24} />
-                   </div>
-                   <h3 className="text-xl font-black text-white">Top 10 Más Vendidos</h3>
-                </div>
-                
-                <div className="space-y-4">
-                  {statsCalculations.topProducts.length > 0 ? (
-                    statsCalculations.topProducts.map((prod, index) => (
-                      <div key={index} className="flex items-center gap-4 bg-black/40 p-4 rounded-2xl border border-zinc-800/50">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${
-                          index === 0 ? 'bg-yellow-500 text-black' :
-                          index === 1 ? 'bg-zinc-400 text-black' :
-                          index === 2 ? 'bg-orange-700 text-white' : 'bg-zinc-800 text-zinc-500'
-                        }`}>
-                          #{index + 1}
-                        </div>
-                        <img loading="lazy" src={prod.image} alt={prod.name} className="w-10 h-10 rounded-lg object-cover bg-zinc-800" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-white truncate">{prod.name}</p>
-                          <div className="w-full bg-zinc-800 h-1.5 rounded-full mt-2 overflow-hidden">
-                             <div 
-                               className="h-full bg-gradient-to-r from-fuchsia-600 to-violet-600" 
-                               style={{ width: `${(prod.qty / statsCalculations.topProducts[0].qty) * 100}%` }}
-                             />
+              {/* RANKING CHART (Top 5) */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-6 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-6">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 bg-yellow-500/10 rounded-xl text-yellow-500 border border-yellow-500/20">
+                        <Trophy size={20} />
+                      </div>
+                      <h3 className="text-lg font-black text-white">Top 5 Más Vendidos</h3>
+                    </div>
+                    <button
+                      onClick={() => setShowTopProductsModal(true)}
+                      className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-bold py-1.5 px-3 rounded-xl transition-all flex items-center gap-1"
+                    >
+                      <List size={14} />
+                      Ver Todo
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {statsCalculations.topProducts.length > 0 ? (
+                      statsCalculations.topProducts.map((prod, index) => (
+                        <div key={index} className="flex items-center gap-3 bg-black/40 p-3 rounded-2xl border border-zinc-800/50">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-[10px] ${
+                            index === 0 ? 'bg-yellow-500 text-black' :
+                            index === 1 ? 'bg-zinc-400 text-black' :
+                            index === 2 ? 'bg-orange-700 text-white' : 'bg-zinc-800 text-zinc-500'
+                          }`}>
+                            #{index + 1}
+                          </div>
+                          <img loading="lazy" src={prod.image || undefined} alt={prod.name} className="w-8 h-8 rounded-lg object-cover bg-zinc-800" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-xs text-white truncate">{prod.name}</p>
+                            <div className="w-full bg-zinc-800 h-1 rounded-full mt-1.5 overflow-hidden">
+                               <div 
+                                 className="h-full bg-gradient-to-r from-fuchsia-600 to-violet-600" 
+                                 style={{ width: `${(prod.qty / statsCalculations.topProducts[0].qty) * 100}%` }}
+                               />
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-black text-xs text-white">{prod.qty}</p>
+                            <p className="text-[8px] text-zinc-500 uppercase">Uds</p>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-black text-white">{prod.qty}</p>
-                          <p className="text-[10px] text-zinc-500 uppercase">Unidades</p>
-                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6 text-zinc-600 text-xs">
+                        <p>No hay datos suficientes en este período</p>
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-10 text-zinc-600">
-                      <p>No hay datos suficientes en este período</p>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* COLUMNA DERECHA: Categorías y Análisis Semanal */}
-              <div className="flex flex-col gap-8">
-                  {/* Categorías */}
-                  <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 flex flex-col items-center justify-center text-center flex-1 min-h-[300px]">
-                     <div className="w-48 h-48 rounded-full border-[20px] border-zinc-800 border-t-fuchsia-500 border-r-violet-500 relative mb-6">
-                        <div className="absolute inset-0 flex items-center justify-center flex-col">
-                          <span className="text-3xl font-black text-white">{CATEGORIES.length - 1}</span>
-                          <span className="text-[10px] uppercase text-zinc-500 font-bold">Categorías</span>
-                        </div>
-                     </div>
-                     <h3 className="text-xl font-bold text-white mb-2">Distribución de Catálogo</h3>
-                     <p className="text-zinc-500 text-sm max-w-xs">Tus productos están organizados principalmente en Golosinas y Bebidas.</p>
+              {/* COMPACT CATALOG DISTRIBUTION */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-6 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2.5 mb-6">
+                    <div className="p-2 bg-fuchsia-500/10 rounded-xl text-fuchsia-500 border border-fuchsia-500/20">
+                      <Layers size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-white">Distribución de Catálogo</h3>
+                      <p className="text-[10px] text-zinc-500">Productos activos por categoría</p>
+                    </div>
                   </div>
 
-                  {/* Nuevo: Análisis Semanal */}
-                  <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8">
-                     <div className="flex items-center gap-3 mb-6">
-                         <div className="p-3 bg-blue-500/10 rounded-2xl text-blue-500 border border-blue-500/20">
-                             <BarChart3 size={24} />
-                         </div>
-                         <div>
-                             <h3 className="text-xl font-black text-white">Rendimiento Semanal</h3>
-                             <p className="text-xs text-zinc-500">
-                                 Mejor día: <span className="text-white font-bold">{statsCalculations.bestDay?.day || '-'}</span> ({formatCurrency(statsCalculations.bestDay?.total || 0)})
-                             </p>
-                         </div>
-                     </div>
- 
-                     <div className="flex items-end justify-between gap-2 h-40 mt-4">
-                         {statsCalculations.salesByDay.map((dayData) => (
-                             <div key={dayData.day} className="flex flex-col items-center gap-2 flex-1 group">
-                                 <div className="w-full bg-zinc-800/50 rounded-t-lg relative flex items-end justify-center overflow-hidden group-hover:bg-zinc-800 transition-colors h-full">
-                                     <div 
-                                         className={`w-full ${dayData.day === statsCalculations.bestDay?.day && dayData.total > 0 ? 'bg-blue-500' : 'bg-zinc-600'} opacity-80 group-hover:opacity-100 transition-all duration-700 rounded-t-lg`}
-                                         style={{ height: `${(dayData.total / statsCalculations.maxDayTotal) * 100}%` }}
-                                     ></div>
-                                 </div>
-                                 <span className={`text-[10px] md:text-xs font-bold uppercase ${dayData.day === statsCalculations.bestDay?.day && dayData.total > 0 ? 'text-blue-500' : 'text-zinc-500'}`}>
-                                     {dayData.day}
-                                 </span>
-                             </div>
-                         ))}
-                     </div>
+                  <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
+                    {statsCalculations.categoryData.length > 0 ? (
+                      statsCalculations.categoryData.map((cat, index) => {
+                        const totalProducts = products.length || 1;
+                        const percentage = Math.round((cat.value / totalProducts) * 100);
+                        return (
+                          <div key={index} className="space-y-1">
+                            <div className="flex justify-between text-xs font-bold">
+                              <span className="text-zinc-300 capitalize">{cat.name}</span>
+                              <span className="text-zinc-500">{cat.value} ({percentage}%)</span>
+                            </div>
+                            <div className="w-full bg-black/40 h-2 rounded-full overflow-hidden border border-zinc-800/50">
+                              <div 
+                                className={`h-full bg-gradient-to-r ${
+                                  index === 0 ? 'from-fuchsia-500 to-violet-500' :
+                                  index === 1 ? 'from-violet-500 to-indigo-500' :
+                                  index === 2 ? 'from-indigo-500 to-blue-500' : 'from-zinc-600 to-zinc-400'
+                                }`}
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-6 text-zinc-600 text-xs">
+                        <p>No hay productos en el catálogo</p>
+                      </div>
+                    )}
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* RECHARTS CHARTS */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+              {/* RENDIMIENTO SEMANAL */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500 border border-blue-500/20">
+                      <BarChart3 size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-white">Rendimiento Semanal</h3>
+                      <p className="text-[10px] text-zinc-500">
+                        Mejor día: <span className="text-white font-bold">{statsCalculations.bestDay?.day || '-'}</span> ({formatCurrency(statsCalculations.bestDay?.total || 0)})
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-60 mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={statsCalculations.salesByDay}
+                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="colorWeekly" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                      <XAxis 
+                        dataKey="day" 
+                        stroke="#71717a" 
+                        fontSize={10} 
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis 
+                        stroke="#71717a" 
+                        fontSize={10} 
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(val) => `$${val}`}
+                      />
+                      <RechartsTooltip
+                        contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '12px' }}
+                        labelClassName="text-white font-bold text-xs"
+                        formatter={(value: any) => [`$${value}`, 'Ventas']}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="total" 
+                        stroke="#3b82f6" 
+                        strokeWidth={2.5} 
+                        fillOpacity={1} 
+                        fill="url(#colorWeekly)" 
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* VENTAS POR HORA (HOY) */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500 border border-emerald-500/20">
+                      <Clock size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-white">Ventas por Hora (Hoy)</h3>
+                      <p className="text-[10px] text-zinc-500">Flujo transaccional en tiempo real</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-60 mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={statsCalculations.hourlySalesToday.filter((h) => {
+                        const hrNum = parseInt(h.hour);
+                        return hrNum >= 8 && hrNum <= 24;
+                      })}
+                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                      <XAxis 
+                        dataKey="hour" 
+                        stroke="#71717a" 
+                        fontSize={10} 
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis 
+                        stroke="#71717a" 
+                        fontSize={10} 
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(val) => `$${val}`}
+                      />
+                      <RechartsTooltip
+                        contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '12px' }}
+                        labelClassName="text-white font-bold text-xs"
+                        formatter={(value: any) => [`$${value}`, 'Ingresos']}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="total" 
+                        stroke="#10b981" 
+                        strokeWidth={2.5} 
+                        dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
             </div>
 
@@ -748,7 +1070,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <tr key={product.id} className="hover:bg-zinc-800/30 transition-colors group">
                              {/* Visual */}
                              <td className="p-4 pl-6 w-20">
-                               <img loading="lazy" src={product.image} className="w-12 h-12 rounded-xl object-cover bg-zinc-800 border border-zinc-800 group-hover:border-zinc-700 transition-colors" alt="" />
+                               <img loading="lazy" src={product.image || undefined} className="w-12 h-12 rounded-xl object-cover bg-zinc-800 border border-zinc-800 group-hover:border-zinc-700 transition-colors" alt="" />
                              </td>
                              <td className="p-4">
                                <div className="flex flex-col">
@@ -1450,7 +1772,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  <div className="space-y-2">
                     <label className="text-xs text-zinc-500 font-bold uppercase">Imagen (Comprimida automáticamente)</label>
                     <div className="flex gap-4 items-center">
-                       <img src={editingProduct.image} alt="" className="w-16 h-16 rounded-xl object-cover bg-zinc-800" />
+                       <img src={editingProduct.image || undefined} alt="" className="w-16 h-16 rounded-xl object-cover bg-zinc-800" />
                        <label className="bg-zinc-800 text-white px-4 py-2 rounded-xl cursor-pointer hover:bg-zinc-700">
                           Cambiar Imagen
                           <input type="file" hidden accept="image/*" onChange={(e) => handleImageFileChange(e, true)} />
@@ -1463,6 +1785,99 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  </div>
               </form>
            </div>
+        </div>
+      )}
+
+      {/* MODAL DE PRODUCTOS MÁS VENDIDOS */}
+      {showTopProductsModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-sm" onClick={() => setShowTopProductsModal(false)} />
+          <div className="relative bg-zinc-900 border border-zinc-800 p-6 rounded-[2.5rem] w-full max-w-2xl shadow-2xl animate-fade-in text-white z-10 flex flex-col max-h-[90vh]">
+            <button 
+              onClick={() => setShowTopProductsModal(false)} 
+              className="absolute top-6 right-6 text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-colors"
+            >
+              <X size={24} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-yellow-500/10 rounded-2xl text-yellow-500 border border-yellow-500/20">
+                <Trophy size={24} />
+              </div>
+              <div>
+                <h3 className="text-xl font-black">Productos Más Vendidos</h3>
+                <p className="text-zinc-500 text-xs mt-0.5">Listado histórico completo de productos vendidos en total</p>
+              </div>
+            </div>
+
+            {/* Search and Action Bar */}
+            <div className="flex flex-col sm:flex-row gap-3 my-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
+                <input
+                  type="text"
+                  placeholder="Buscar entre los más vendidos..."
+                  value={topProductsSearch}
+                  onChange={(e) => setTopProductsSearch(e.target.value)}
+                  className="w-full bg-black/40 border border-zinc-800 rounded-xl py-2.5 pl-11 pr-4 text-sm text-white placeholder:text-zinc-600 focus:border-yellow-500/50 outline-none transition-all"
+                />
+              </div>
+              <button
+                onClick={handleExportPDF}
+                className="bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-black text-xs px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-red-950/20 active:scale-95 transition-all uppercase tracking-wider"
+              >
+                <FileText size={16} />
+                Exportar Reporte PDF
+              </button>
+            </div>
+
+            {/* Table Content */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 my-2">
+              {statsCalculations.allSoldProducts.length > 0 ? (
+                (() => {
+                  const filtered = statsCalculations.allSoldProducts.filter(p =>
+                    p.name.toLowerCase().includes(topProductsSearch.toLowerCase())
+                  );
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="text-center py-12 text-zinc-600 text-sm">
+                        No se encontraron productos coincidentes
+                      </div>
+                    );
+                  }
+
+                  return filtered.map((prod, index) => (
+                    <div key={index} className="flex items-center gap-3 bg-black/40 p-3 rounded-2xl border border-zinc-800/50">
+                      <div className="w-8 text-center text-xs font-black text-zinc-500">
+                        #{index + 1}
+                      </div>
+                      <img loading="lazy" src={prod.image || undefined} alt={prod.name} className="w-10 h-10 rounded-lg object-cover bg-zinc-800" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm text-white truncate">{prod.name}</p>
+                        <p className="text-[10px] text-zinc-500 uppercase">Total acumulado: {formatCurrency(prod.total)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-black text-sm text-yellow-500">{prod.qty}</p>
+                        <p className="text-[9px] text-zinc-500 uppercase font-semibold">Unidades</p>
+                      </div>
+                    </div>
+                  ));
+                })()
+              ) : (
+                <div className="text-center py-12 text-zinc-600 text-sm">
+                  Aún no se han registrado ventas de productos
+                </div>
+              )}
+            </div>
+
+            <button 
+              onClick={() => setShowTopProductsModal(false)}
+              className="w-full mt-4 bg-zinc-800 hover:bg-zinc-700 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all"
+            >
+              Cerrar
+            </button>
+          </div>
         </div>
       )}
 
