@@ -13,7 +13,7 @@ import {
   FileJson, FileSpreadsheet, ClipboardCheck, MousePointerClick,
   ArrowRight, ShoppingBag, Table, Trophy, Save, Filter, ArrowUpDown, AlertTriangle,
   Sun, Moon, Sunrise, Sunset, Database, HardDriveDownload, HardDriveUpload,
-  RefreshCw, Play
+  RefreshCw, Play, Calendar
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -145,10 +145,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   sales = [],
   isOnline = true
 }) => {
-  const [activeTab, setActiveTab] = useState<'stats' | 'inventory' | 'suppliers' | 'users' | 'sync' | 'help'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'inventory' | 'suppliers' | 'users' | 'sync' | 'help' | 'calendar'>('stats');
   const [editingPendingSale, setEditingPendingSale] = useState<any | null>(null);
 
   const [statsPeriod, setStatsPeriod] = useState<'day' | 'week' | 'month'>('day');
+  const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
+  const [calendarSelectedDate, setCalendarSelectedDate] = useState<string | null>(null);
   const [inventorySubTab, setInventorySubTab] = useState<'list' | 'manual' | 'excel' | 'json'>('list');
   const [userSubTab, setUserSubTab] = useState<'manage' | 'logs'>('manage');
   const [showSupplierForm, setShowSupplierForm] = useState(false);
@@ -666,6 +668,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <nav className="flex-1 space-y-2 px-2.5">
           {[
             { id: 'stats', label: 'Estadísticas', icon: <BarChart3 size={20} /> },
+            { id: 'calendar', label: 'Calendario', icon: <Calendar size={20} /> },
             { id: 'inventory', label: 'Inventario', icon: <Package size={20} /> },
             { id: 'suppliers', label: 'Proveedores', icon: <LayoutGrid size={20} /> },
             { id: 'users', label: 'Usuarios', icon: <Users size={20} /> },
@@ -1000,6 +1003,84 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
+          </div>
+        )}
+
+        {/* CALENDAR TAB */}
+        {activeTab === 'calendar' && (
+          <div className="space-y-6 animate-fade-in">
+             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
+                <div>
+                   <h2 className="text-2xl font-black text-white">Calendario Anual</h2>
+                   <p className="text-zinc-500">Selecciona un día para ver los detalles de ventas.</p>
+                </div>
+                
+                <div className="flex items-center gap-4 bg-zinc-900 p-2 rounded-2xl border border-zinc-800">
+                  <button 
+                    onClick={() => setCalendarYear(y => y - 1)}
+                    className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition-all"
+                  >
+                    <ChevronRight size={20} className="rotate-180" />
+                  </button>
+                  <span className="text-xl font-black text-white min-w-[80px] text-center">{calendarYear}</span>
+                  <button 
+                    onClick={() => setCalendarYear(y => y + 1)}
+                    className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition-all"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </div>
+             </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+               {Array.from({ length: 12 }).map((_, monthIndex) => {
+                 const date = new Date(calendarYear, monthIndex, 1);
+                 const monthName = date.toLocaleString('es-AR', { month: 'long' });
+                 const daysInMonth = new Date(calendarYear, monthIndex + 1, 0).getDate();
+                 const firstDayOfWeek = date.getDay(); // 0 is Sunday
+                 const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+                 const blanks = Array.from({ length: firstDayOfWeek }, (_, i) => i);
+                 
+                 return (
+                   <div key={monthIndex} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 hover:border-zinc-700 transition-colors">
+                     <h3 className="text-lg font-black text-white capitalize mb-4 text-center">{monthName}</h3>
+                     <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                       {['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá'].map(d => (
+                         <div key={d} className="text-[10px] font-bold text-zinc-600 uppercase">{d}</div>
+                       ))}
+                     </div>
+                     <div className="grid grid-cols-7 gap-1">
+                       {blanks.map(b => (
+                         <div key={`blank-${b}`} className="p-2" />
+                       ))}
+                       {days.map(d => {
+                         const currentDayDate = new Date(calendarYear, monthIndex, d);
+                         const isToday = new Date().toDateString() === currentDayDate.toDateString();
+                         // Check if there are sales this day
+                         const salesThisDay = sales.filter(s => new Date(s.timestamp).toDateString() === currentDayDate.toDateString());
+                         const hasSales = salesThisDay.length > 0;
+                         const totalSales = salesThisDay.reduce((acc, s) => acc + s.total, 0);
+                         
+                         return (
+                           <button
+                             key={d}
+                             onClick={() => setCalendarSelectedDate(currentDayDate.toISOString())}
+                             className={`p-2 rounded-xl text-xs font-bold transition-all relative flex flex-col items-center justify-center ${
+                               isToday ? 'bg-fuchsia-600 text-white shadow-lg shadow-fuchsia-500/20' : 
+                               hasSales ? 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700' : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
+                             }`}
+                             title={hasSales ? `${salesThisDay.length} ventas - ${formatCurrency(totalSales)}` : 'Sin ventas'}
+                           >
+                             <span>{d}</span>
+                             {hasSales && !isToday && <span className="w-1 h-1 rounded-full bg-emerald-500 absolute bottom-1"></span>}
+                           </button>
+                         );
+                       })}
+                     </div>
+                   </div>
+                 );
+               })}
+             </div>
           </div>
         )}
 
@@ -1876,6 +1957,131 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               className="w-full mt-4 bg-zinc-800 hover:bg-zinc-700 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all"
             >
               Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CALENDAR DATE DETAILS MODAL */}
+      {calendarSelectedDate && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-sm" onClick={() => setCalendarSelectedDate(null)} />
+          <div className="relative bg-zinc-900 border border-zinc-800 p-6 rounded-[2.5rem] w-full max-w-4xl shadow-2xl animate-fade-in text-white z-10 flex flex-col max-h-[90vh]">
+            <button 
+              onClick={() => setCalendarSelectedDate(null)} 
+              className="absolute top-6 right-6 text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-colors"
+            >
+              <X size={24} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-fuchsia-500/10 rounded-2xl text-fuchsia-500 border border-fuchsia-500/20">
+                <Calendar size={24} />
+              </div>
+              <div>
+                <h3 className="text-xl font-black">Detalle de Ventas</h3>
+                <p className="text-zinc-500 text-xs mt-0.5 capitalize">{new Date(calendarSelectedDate).toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+              </div>
+            </div>
+
+            {(() => {
+              const dateObj = new Date(calendarSelectedDate);
+              const daySales = sales.filter(s => new Date(s.timestamp).toDateString() === dateObj.toDateString());
+              
+              const productSalesForDay: Record<string, {name: string, qty: number, total: number, image?: string}> = {};
+              daySales.forEach(sale => {
+                sale.items.forEach(item => {
+                  if (!productSalesForDay[item.id]) {
+                    productSalesForDay[item.id] = { name: item.name, qty: 0, total: 0, image: item.image };
+                  }
+                  productSalesForDay[item.id].qty += item.quantity;
+                  productSalesForDay[item.id].total += (item.price * item.quantity);
+                });
+              });
+
+              const topDayProducts = Object.values(productSalesForDay).sort((a, b) => b.qty - a.qty).slice(0, 3);
+              const dayTotal = daySales.reduce((acc, sale) => acc + sale.total, 0);
+
+              return (
+                <div className="flex flex-col md:flex-row gap-6 overflow-hidden">
+                   {/* Columna Izquierda: Top 3 */}
+                   <div className="md:w-1/3 flex flex-col gap-4">
+                     <div className="bg-black/40 border border-zinc-800 rounded-3xl p-5">
+                       <h4 className="text-sm font-black text-white mb-4 flex items-center gap-2">
+                         <Trophy size={16} className="text-yellow-500" /> Top 3 del Día
+                       </h4>
+                       <div className="space-y-3">
+                         {topDayProducts.length > 0 ? topDayProducts.map((prod, idx) => (
+                           <div key={idx} className="flex items-center gap-3 bg-zinc-900/50 p-2.5 rounded-2xl border border-zinc-800/50">
+                             <div className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-[10px] shrink-0 ${
+                               idx === 0 ? 'bg-yellow-500 text-black' :
+                               idx === 1 ? 'bg-zinc-400 text-black' :
+                               'bg-orange-700 text-white'
+                             }`}>
+                               #{idx + 1}
+                             </div>
+                             <div className="flex-1 min-w-0">
+                               <p className="font-bold text-xs text-white truncate">{prod.name}</p>
+                               <p className="text-[10px] text-zinc-500">{prod.qty} unidades</p>
+                             </div>
+                           </div>
+                         )) : (
+                           <p className="text-xs text-zinc-600 text-center py-4">Sin productos vendidos</p>
+                         )}
+                       </div>
+                     </div>
+                     <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-3xl p-5 text-center">
+                       <p className="text-[10px] text-emerald-500 font-bold uppercase mb-1">Total Ingresos</p>
+                       <p className="text-2xl font-black text-emerald-400">{formatCurrency(dayTotal)}</p>
+                       <p className="text-xs text-emerald-500/60 font-bold mt-1">{daySales.length} ventas</p>
+                     </div>
+                   </div>
+
+                   {/* Columna Derecha: Lista de ventas */}
+                   <div className="md:w-2/3 flex flex-col min-h-[300px] bg-black/40 border border-zinc-800 rounded-3xl p-5">
+                     <h4 className="text-sm font-black text-white mb-4 flex items-center gap-2">
+                       <List size={16} className="text-zinc-400" /> Registro de Ventas
+                     </h4>
+                     <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                       {daySales.length > 0 ? (
+                         daySales.slice().sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map(sale => (
+                           <div key={sale.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-900/50 p-3 rounded-2xl border border-zinc-800/50">
+                             <div className="flex items-center gap-4">
+                               <div className="text-center shrink-0">
+                                 <p className="text-xs font-bold text-white">{new Date(sale.timestamp).toLocaleTimeString('es-AR', {hour: '2-digit', minute:'2-digit'})}</p>
+                                 <p className="text-[9px] font-black uppercase text-zinc-500">{sale.paymentMethod}</p>
+                               </div>
+                               <div className="w-px h-8 bg-zinc-800 shrink-0 hidden sm:block"></div>
+                               <div className="flex-1 min-w-0">
+                                 <p className="text-xs font-bold text-zinc-300">
+                                   {sale.items.length} {sale.items.length === 1 ? 'producto' : 'productos'}
+                                 </p>
+                                 <p className="text-[10px] text-zinc-500 truncate mt-0.5">
+                                   {sale.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
+                                 </p>
+                               </div>
+                             </div>
+                             <div className="text-right shrink-0">
+                               <p className="font-black text-sm text-white">{formatCurrency(sale.total)}</p>
+                             </div>
+                           </div>
+                         ))
+                       ) : (
+                         <div className="h-full flex items-center justify-center">
+                           <p className="text-zinc-600 text-sm">No hay registro de ventas este día.</p>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                </div>
+              );
+            })()}
+
+            <button 
+              onClick={() => setCalendarSelectedDate(null)}
+              className="w-full mt-6 bg-zinc-800 hover:bg-zinc-700 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all"
+            >
+              Cerrar Resumen
             </button>
           </div>
         </div>
