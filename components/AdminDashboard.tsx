@@ -13,12 +13,12 @@ import {
   FileJson, FileSpreadsheet, ClipboardCheck, MousePointerClick,
   ArrowRight, ShoppingBag, Table, Trophy, Save, Filter, ArrowUpDown, AlertTriangle,
   Sun, Moon, Sunrise, Sunset, Database, HardDriveDownload, HardDriveUpload,
-  RefreshCw, Play, Calendar
+  RefreshCw, Play, Calendar, History, Bug
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import { Product, Supplier, AppUser, LoginLog, Sale } from '../types';
+import { Product, Supplier, AppUser, LoginLog, Sale, ProductLog, ErrorLog } from '../types';
 import { CATEGORIES } from '../constants';
 import { formatCurrency, compressImage, hashPassword } from '../utils';
 import { dbService } from '../db';
@@ -52,6 +52,8 @@ interface AdminDashboardProps {
   onDeleteSupplier: (id: string) => void;
   users: AppUser[];
   loginLogs: LoginLog[];
+  productLogs?: ProductLog[];
+  errorLogs?: ErrorLog[];
   onAddUser: (user: AppUser) => void;
   onUpdateUser: (user: AppUser) => void;
   onDeleteUser: (id: string) => void;
@@ -139,13 +141,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onDeleteSupplier,
   users,
   loginLogs,
+  productLogs = [],
+  errorLogs = [],
   onAddUser,
   onUpdateUser,
   onDeleteUser,
   sales = [],
   isOnline = true
 }) => {
-  const [activeTab, setActiveTab] = useState<'stats' | 'inventory' | 'suppliers' | 'users' | 'sync' | 'help' | 'calendar'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'inventory' | 'suppliers' | 'users' | 'sync' | 'help' | 'calendar' | 'product-logs' | 'error-logs'>('stats');
   const [editingPendingSale, setEditingPendingSale] = useState<any | null>(null);
 
   const [statsPeriod, setStatsPeriod] = useState<'day' | 'week' | 'month'>('day');
@@ -160,6 +164,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [importResult, setImportResult] = useState<{ success: boolean; count: number; message: string } | null>(null);
   
   const [inventorySearch, setInventorySearch] = useState('');
+  
+  // Product Logs Filter State
+  const [productLogSearch, setProductLogSearch] = useState('');
+  const [productLogFilterAction, setProductLogFilterAction] = useState<'all' | 'create' | 'update' | 'delete'>('all');
+
+  // Error Logs Filter State
+  const [errorLogSearch, setErrorLogSearch] = useState('');
+  const [errorLogFilterType, setErrorLogFilterType] = useState<'all' | 'error' | 'warning' | 'conflict'>('all');
   
   // Sales Table State
   const [salesSearch, setSalesSearch] = useState('');
@@ -672,6 +684,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             { id: 'inventory', label: 'Inventario', icon: <Package size={20} /> },
             { id: 'suppliers', label: 'Proveedores', icon: <LayoutGrid size={20} /> },
             { id: 'users', label: 'Usuarios', icon: <Users size={20} /> },
+            { id: 'product-logs', label: 'Bitácora de Eventos', icon: <History size={20} /> },
+            { id: 'error-logs', label: 'Errores de App', icon: <Bug size={20} /> },
             { id: 'sync', label: 'Base de Datos', icon: <Database size={20} /> },
             { id: 'help', label: 'Config/Ayuda', icon: <LifeBuoy size={20} /> },
           ].map((item) => (
@@ -1720,6 +1734,300 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* BITACORA DE EVENTOS TAB */}
+        {activeTab === 'product-logs' && (
+          <div className="space-y-6 animate-fade-in pb-10">
+             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
+                <div>
+                   <h2 className="text-2xl font-black text-white flex items-center gap-2">
+                     <History size={26} className="text-fuchsia-500" />
+                     Bitácora de Eventos
+                   </h2>
+                   <p className="text-zinc-500">Historial de alta, modificación y eliminación de productos.</p>
+                </div>
+                
+                {productLogs.length > 0 && (
+                  <button 
+                    onClick={async () => {
+                      if (window.confirm('¿Está seguro de que desea limpiar toda la bitácora de eventos?')) {
+                        await dbService.clearProductLogs();
+                      }
+                    }}
+                    className="px-5 py-3 rounded-2xl bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white transition-all text-xs font-black border border-red-500/20 uppercase tracking-wider shrink-0 cursor-pointer"
+                  >
+                    Limpiar Bitácora
+                  </button>
+                )}
+             </div>
+
+             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+               <div className="flex flex-col md:flex-row gap-4 mb-6">
+                 {/* Buscador */}
+                 <div className="flex-1 relative">
+                   <input 
+                     type="text"
+                     placeholder="Buscar por producto, usuario o detalles..."
+                     value={productLogSearch}
+                     onChange={e => setProductLogSearch(e.target.value)}
+                     className="w-full bg-black border border-zinc-800 rounded-2xl p-4 pl-12 text-white outline-none focus:border-fuchsia-500 text-sm transition-all"
+                   />
+                   <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />
+                 </div>
+
+                 {/* Filtros de acción */}
+                 <div className="flex gap-2 bg-black/50 p-1.5 rounded-2xl border border-zinc-800 overflow-x-auto shrink-0">
+                   {(['all', 'create', 'update', 'delete'] as const).map(action => (
+                     <button
+                       key={action}
+                       onClick={() => setProductLogFilterAction(action)}
+                       className={`px-4 py-2.5 rounded-xl text-xs font-bold capitalize transition-all whitespace-nowrap cursor-pointer ${
+                         productLogFilterAction === action
+                           ? 'bg-zinc-800 text-white border border-zinc-700 shadow'
+                           : 'text-zinc-500 hover:text-zinc-300'
+                       }`}
+                     >
+                       {action === 'all' ? 'Todos' : action === 'create' ? 'Altas' : action === 'update' ? 'Ediciones' : 'Bajas'}
+                     </button>
+                   ))}
+                 </div>
+               </div>
+
+               {/* Tabla de registros */}
+               {(() => {
+                 const filtered = productLogs.filter(log => {
+                   const matchesAction = productLogFilterAction === 'all' || log.action === productLogFilterAction;
+                   const term = productLogSearch.toLowerCase();
+                   const matchesSearch = !term || 
+                     log.productName.toLowerCase().includes(term) ||
+                     log.username.toLowerCase().includes(term) ||
+                     log.details.toLowerCase().includes(term);
+                   return matchesAction && matchesSearch;
+                 }).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+                 return (
+                   <div className="overflow-x-auto rounded-2xl border border-zinc-800">
+                     <table className="w-full text-left border-collapse">
+                       <thead>
+                         <tr className="bg-black/80 text-zinc-400 text-xs font-bold uppercase border-b border-zinc-850">
+                           <th className="p-4 pl-6">Fecha y Hora</th>
+                           <th className="p-4">Usuario</th>
+                           <th className="p-4">Acción</th>
+                           <th className="p-4">Producto</th>
+                           <th className="p-4 pr-6">Detalles de la Modificación</th>
+                         </tr>
+                       </thead>
+                       <tbody className="divide-y divide-zinc-800/40 text-sm">
+                         {filtered.length > 0 ? (
+                           filtered.map(log => (
+                             <tr key={log.id} className="hover:bg-zinc-800/20 transition-colors">
+                               <td className="p-4 pl-6 text-zinc-400 font-medium font-mono text-xs whitespace-nowrap">
+                                 {new Date(log.timestamp).toLocaleString('es-AR')}
+                               </td>
+                               <td className="p-4 font-bold text-zinc-300">
+                                 {log.username}
+                               </td>
+                               <td className="p-4">
+                                 <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${
+                                   log.action === 'create' 
+                                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                                     : log.action === 'update'
+                                     ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                     : 'bg-red-500/10 text-red-400 border-red-500/20'
+                                 }`}>
+                                   {log.action === 'create' ? 'ALTA' : log.action === 'update' ? 'EDICIÓN' : 'BAJA'}
+                                 </span>
+                               </td>
+                               <td className="p-4 font-semibold text-white">
+                                 {log.productName}
+                               </td>
+                               <td className="p-4 text-zinc-400 pr-6 max-w-md break-words text-xs">
+                                 {log.details}
+                               </td>
+                             </tr>
+                           ))
+                         ) : (
+                           <tr>
+                             <td colSpan={5} className="p-12 text-center text-zinc-500">
+                               No se encontraron registros en la bitácora que coincidan con la búsqueda.
+                             </td>
+                           </tr>
+                         )}
+                       </tbody>
+                     </table>
+                   </div>
+                 );
+               })()}
+             </div>
+          </div>
+        )}
+
+        {/* REGISTRO DE ERRORES DE APP TAB */}
+        {activeTab === 'error-logs' && (
+          <div className="space-y-6 animate-fade-in pb-10">
+             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
+                <div>
+                   <h2 className="text-2xl font-black text-white flex items-center gap-2">
+                     <Bug size={26} className="text-red-500" />
+                     Errores de Aplicación
+                   </h2>
+                   <p className="text-zinc-500">Registro de fallos técnicos, advertencias y conflictos de sincronización de la aplicación.</p>
+                </div>
+                
+                <div className="flex items-center gap-3 self-end md:self-auto shrink-0">
+                  <button 
+                    onClick={() => {
+                      let text = `==================================================\n`;
+                      text += `   REPORTE DE ERRORES INTERNOS DE LA APLICACIÓN\n`;
+                      text += `   Generado el: ${new Date().toLocaleString('es-AR')}\n`;
+                      text += `==================================================\n\n`;
+                      
+                      if (errorLogs.length === 0) {
+                        text += `No se encontraron registros de errores.\n`;
+                      } else {
+                        errorLogs.forEach((log, index) => {
+                          text += `[#${index + 1}] -------------------------------------------\n`;
+                          text += `FECHA: ${new Date(log.timestamp).toLocaleString('es-AR')}\n`;
+                          text += `TIPO: ${log.type.toUpperCase()}\n`;
+                          text += `COMPONENTE: ${log.component || 'Global/Desconocido'}\n`;
+                          text += `USUARIO: ${log.username || 'No autenticado'} (ID: ${log.userId || 'N/A'})\n`;
+                          text += `MENSAJE: ${log.message}\n`;
+                          if (log.stack) {
+                            text += `STACK TRACE:\n${log.stack}\n`;
+                          }
+                          text += `\n`;
+                        });
+                      }
+                      
+                      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = `reporte_errores_kiosco_${new Date().toISOString().slice(0,10)}.txt`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      URL.revokeObjectURL(url);
+                    }}
+                    className="px-5 py-3 rounded-2xl bg-zinc-850 hover:bg-zinc-800 text-white hover:text-white border border-zinc-800 transition-all text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer"
+                  >
+                    <Download size={14} /> Exportar TXT
+                  </button>
+
+                  {errorLogs.length > 0 && (
+                    <button 
+                      onClick={async () => {
+                        if (window.confirm('¿Está seguro de que desea limpiar todos los registros de error de la aplicación?')) {
+                          await dbService.clearErrorLogs();
+                        }
+                      }}
+                      className="px-5 py-3 rounded-2xl bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white transition-all text-xs font-black border border-red-500/20 uppercase tracking-wider shrink-0 cursor-pointer"
+                    >
+                      Limpiar Errores
+                    </button>
+                  )}
+                </div>
+             </div>
+
+             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+               <div className="flex flex-col md:flex-row gap-4 mb-6">
+                 {/* Buscador */}
+                 <div className="flex-1 relative">
+                   <input 
+                     type="text"
+                     placeholder="Buscar por mensaje, componente o stack trace..."
+                     value={errorLogSearch}
+                     onChange={e => setErrorLogSearch(e.target.value)}
+                     className="w-full bg-black border border-zinc-800 rounded-2xl p-4 pl-12 text-white outline-none focus:border-red-500 text-sm transition-all"
+                   />
+                   <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />
+                 </div>
+
+                 {/* Filtros de tipo */}
+                 <div className="flex gap-2 bg-black/50 p-1.5 rounded-2xl border border-zinc-800 overflow-x-auto shrink-0">
+                   {(['all', 'error', 'warning', 'conflict'] as const).map(type => (
+                     <button
+                       key={type}
+                       onClick={() => setErrorLogFilterType(type)}
+                       className={`px-4 py-2.5 rounded-xl text-xs font-bold capitalize transition-all whitespace-nowrap cursor-pointer ${
+                         errorLogFilterType === type
+                           ? 'bg-zinc-800 text-white border border-zinc-700 shadow'
+                           : 'text-zinc-500 hover:text-zinc-300'
+                       }`}
+                     >
+                       {type === 'all' ? 'Todos' : type === 'error' ? 'Errores' : type === 'warning' ? 'Advertencias' : 'Conflictos'}
+                     </button>
+                   ))}
+                 </div>
+               </div>
+
+               {/* Lista de Errores */}
+               {(() => {
+                 const filtered = errorLogs.filter(log => {
+                   const matchesType = errorLogFilterType === 'all' || log.type === errorLogFilterType;
+                   const term = errorLogSearch.toLowerCase();
+                   const matchesSearch = !term || 
+                     log.message.toLowerCase().includes(term) ||
+                     (log.stack && log.stack.toLowerCase().includes(term)) ||
+                     (log.component && log.component.toLowerCase().includes(term));
+                   return matchesType && matchesSearch;
+                 }).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+                 return (
+                   <div className="space-y-4">
+                     {filtered.length > 0 ? (
+                       filtered.map(log => (
+                         <div key={log.id} className="bg-black/35 border border-zinc-800/80 hover:border-zinc-750 p-5 rounded-2xl transition-all">
+                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                             <div className="flex items-center gap-3">
+                               <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${
+                                 log.type === 'error' 
+                                   ? 'bg-red-500/10 text-red-400 border-red-500/20' 
+                                   : log.type === 'warning'
+                                   ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                   : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                               }`}>
+                                 {log.type === 'error' ? 'ERROR' : log.type === 'warning' ? 'WARN' : 'CONFLICT'}
+                               </span>
+                               <span className="text-zinc-500 font-mono text-xs font-bold">
+                                 {new Date(log.timestamp).toLocaleString('es-AR')}
+                               </span>
+                             </div>
+                             <div className="text-zinc-500 text-xs">
+                               Módulo: <span className="text-zinc-300 font-semibold">{log.component || 'Global'}</span>
+                             </div>
+                           </div>
+
+                           <h4 className="text-white font-bold text-sm leading-relaxed mb-3">
+                             {log.message}
+                           </h4>
+
+                           {log.username && (
+                             <div className="text-zinc-500 text-xs mb-3">
+                               Usuario implicado: <span className="text-zinc-300 font-semibold">{log.username}</span> (ID: <span className="font-mono">{log.userId}</span>)
+                             </div>
+                           )}
+
+                           {log.stack && (
+                             <div className="bg-black/90 rounded-xl border border-zinc-850 p-4 overflow-x-auto max-h-40">
+                               <pre className="text-[11px] text-zinc-500 font-mono leading-relaxed whitespace-pre font-medium">
+                                 {log.stack}
+                               </pre>
+                             </div>
+                           )}
+                         </div>
+                       ))
+                     ) : (
+                       <div className="p-12 text-center text-zinc-500 bg-black/20 rounded-2xl border border-zinc-800">
+                         No se encontraron errores registrados en la base de datos que coincidan con los filtros.
+                       </div>
+                     )}
+                   </div>
+                 );
+               })()}
+             </div>
           </div>
         )}
 

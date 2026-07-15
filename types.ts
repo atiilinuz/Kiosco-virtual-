@@ -60,3 +60,25 @@ export interface AIRecommendation {
   products: string[];
   reasoning: string;
 }
+
+export interface ProductLog {
+  id: string;
+  productId: string;
+  productName: string;
+  action: 'create' | 'update' | 'delete';
+  userId: string;
+  username: string;
+  timestamp: string;
+  details: string;
+}
+
+export interface ErrorLog {
+  id: string;
+  timestamp: string;
+  message: string;
+  stack?: string;
+  type: 'error' | 'warning' | 'conflict';
+  component?: string;
+  userId?: string;
+  username?: string;
+}

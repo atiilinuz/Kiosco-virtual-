@@ -74,6 +74,8 @@ const AppContent: React.FC = () => {
   const users = useLiveQuery(() => db.users.toArray()) ?? [];
   const suppliers = useLiveQuery(() => db.suppliers.toArray()) ?? [];
   const loginLogs = useLiveQuery(() => db.logs.toArray()) ?? [];
+  const productLogs = useLiveQuery(() => db.productLogs.toArray()) ?? [];
+  const errorLogs = useLiveQuery(() => db.errorLogs.toArray()) ?? [];
 
   // Carrito (sigue en localStorage por ser volátil/sesión)
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -109,6 +111,41 @@ const AppContent: React.FC = () => {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // Capturar errores globales no controlados y registrarlos en la base de datos local
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      dbService.logApplicationError(
+        event.message || 'Error desconocido',
+        event.error?.stack,
+        'error',
+        'Global Window',
+        currentUser?.id,
+        currentUser?.username
+      ).catch(err => console.error('Failed to log global error', err));
+    };
+
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const message = event.reason instanceof Error ? event.reason.message : String(event.reason);
+      const stack = event.reason instanceof Error ? event.reason.stack : undefined;
+      dbService.logApplicationError(
+        `Promesa rechazada no controlada: ${message}`,
+        stack,
+        'error',
+        'Global Promise',
+        currentUser?.id,
+        currentUser?.username
+      ).catch(err => console.error('Failed to log global rejection', err));
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleRejection);
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleRejection);
+    };
+  }, [currentUser]);
 
   useEffect(() => {
     // Forzar aparición del botón si es Android y Chrome
@@ -305,12 +342,107 @@ const AppContent: React.FC = () => {
   // --- Handlers para AdminDashboard (Wrappers de DB) ---
   const handleImportProducts = async (newProds: Product[]) => {
       await dbService.bulkAddProducts(newProds);
+      
+      try {
+        const username = currentUser?.username || 'Sistema';
+        const userId = currentUser?.id || 'system';
+        
+        if (newProds.length === 1) {
+          const prod = newProds[0];
+          await dbService.addProductLog({
+            id: `plog-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            productId: prod.id,
+            productName: prod.name,
+            action: 'create',
+            userId,
+            username,
+            timestamp: new Date().toISOString(),
+            details: `Producto creado manualmente: ${prod.name} (Precio: $${prod.price}, Stock: ${prod.stock}, Categoría: ${prod.category})`
+          });
+        } else {
+          await dbService.addProductLog({
+            id: `plog-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            productId: 'bulk',
+            productName: 'Importación Masiva',
+            action: 'create',
+            userId,
+            username,
+            timestamp: new Date().toISOString(),
+            details: `Importación masiva de ${newProds.length} productos en el inventario`
+          });
+        }
+      } catch (e) {
+        console.error('Error logging product import:', e);
+      }
   };
+
   const handleUpdateProduct = async (p: Product) => {
+      let details = `Producto actualizado`;
+      try {
+        const prev = await db.products.get(p.id);
+        if (prev) {
+          const changes: string[] = [];
+          if (prev.name !== p.name) changes.push(`Nombre cambiado de "${prev.name}" a "${p.name}"`);
+          if (prev.price !== p.price) changes.push(`Precio cambiado de $${prev.price} a $${p.price}`);
+          if (prev.stock !== p.stock) changes.push(`Stock cambiado de ${prev.stock} a ${p.stock}`);
+          if (prev.category !== p.category) changes.push(`Categoría cambiada de "${prev.category}" a "${p.category}"`);
+          if (prev.barcode !== p.barcode) changes.push(`Código de barras cambiado de "${prev.barcode || 'Ninguno'}" a "${p.barcode || 'Ninguno'}"`);
+          
+          if (changes.length > 0) {
+            details = changes.join(', ');
+          } else {
+            details = `Guardado sin cambios detectados`;
+          }
+        }
+      } catch (e) {
+        console.error('Error comparing product states:', e);
+      }
+
       await dbService.updateProduct(p.id, p);
+
+      try {
+        await dbService.addProductLog({
+          id: `plog-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          productId: p.id,
+          productName: p.name,
+          action: 'update',
+          userId: currentUser?.id || 'system',
+          username: currentUser?.username || 'Sistema',
+          timestamp: new Date().toISOString(),
+          details
+        });
+      } catch (e) {
+        console.error('Error logging product update:', e);
+      }
   };
+
   const handleDeleteProduct = async (id: string) => {
+      let prodName = 'Desconocido';
+      try {
+        const prod = await db.products.get(id);
+        if (prod) {
+          prodName = prod.name;
+        }
+      } catch (e) {
+        console.error('Error retrieving product to delete:', e);
+      }
+
       await dbService.deleteProduct(id);
+
+      try {
+        await dbService.addProductLog({
+          id: `plog-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          productId: id,
+          productName: prodName,
+          action: 'delete',
+          userId: currentUser?.id || 'system',
+          username: currentUser?.username || 'Sistema',
+          timestamp: new Date().toISOString(),
+          details: `Producto eliminado: "${prodName}" (ID: ${id})`
+        });
+      } catch (e) {
+        console.error('Error logging product deletion:', e);
+      }
   };
   
   const handleAddSupplier = async (s: Supplier) => {
@@ -356,6 +488,8 @@ const AppContent: React.FC = () => {
                 onDeleteSupplier={handleDeleteSupplier}
                 users={users}
                 loginLogs={loginLogs}
+                productLogs={productLogs}
+                errorLogs={errorLogs}
                 onAddUser={handleAddUser}
                 onUpdateUser={handleUpdateUser}
                 onDeleteUser={handleDeleteUser}

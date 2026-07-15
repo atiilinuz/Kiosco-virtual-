@@ -1,5 +1,5 @@
 import Dexie, { Table } from 'dexie';
-import { Product, Sale, AppUser, Supplier, LoginLog } from './types';
+import { Product, Sale, AppUser, Supplier, LoginLog, ProductLog, ErrorLog } from './types';
 import { PRODUCTS } from './constants';
 import { hashPassword } from './utils';
 
@@ -18,15 +18,19 @@ class KioscoDatabase extends Dexie {
   suppliers!: Table<Supplier, string>;
   users!: Table<AppUser, string>;
   logs!: Table<LoginLog, string>;
+  productLogs!: Table<ProductLog, string>;
+  errorLogs!: Table<ErrorLog, string>;
 
   constructor() {
     super('KioscoLasChicasDB');
-    this.version(1).stores({
+    this.version(2).stores({
       products: 'id, barcode, category',
       sales: 'id, timestamp',
       suppliers: 'id',
       users: 'id, username',
-      logs: 'id, userId, timestamp'
+      logs: 'id, userId, timestamp',
+      productLogs: 'id, productId, action, timestamp',
+      errorLogs: 'id, timestamp, type'
     });
   }
 }
@@ -173,5 +177,42 @@ export const dbService = {
       await db.logs.clear();
       await db.logs.bulkPut(data.logs);
     }
+    if (data.productLogs && Array.isArray(data.productLogs)) {
+      await db.productLogs.clear();
+      await db.productLogs.bulkPut(data.productLogs);
+    }
+    if (data.errorLogs && Array.isArray(data.errorLogs)) {
+      await db.errorLogs.clear();
+      await db.errorLogs.bulkPut(data.errorLogs);
+    }
+  },
+
+  // --- Product Logs ---
+  async addProductLog(log: ProductLog) {
+    await db.productLogs.put(log);
+  },
+  async clearProductLogs() {
+    await db.productLogs.clear();
+  },
+
+  // --- Error Logs ---
+  async addErrorLog(log: ErrorLog) {
+    await db.errorLogs.put(log);
+  },
+  async logApplicationError(message: string, stack?: string, type: 'error' | 'warning' | 'conflict' = 'error', component?: string, userId?: string, username?: string) {
+    const log: ErrorLog = {
+      id: `err-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+      timestamp: new Date().toISOString(),
+      message,
+      stack,
+      type,
+      component,
+      userId,
+      username
+    };
+    await db.errorLogs.put(log);
+  },
+  async clearErrorLogs() {
+    await db.errorLogs.clear();
   }
 };
