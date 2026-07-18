@@ -61,22 +61,22 @@ const ProductCard: React.FC<ProductCardProps> = ({
         <div className="flex items-center justify-between gap-1.5 mt-0.5">
           {currentQty > 0 ? (
             /* CONTROL DE CANTIDAD EXPANDIDO */
-            <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl p-0.5 w-full justify-between animate-fade-in">
+            <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl p-1 w-full justify-between animate-fade-in shadow-inner">
               <button 
                 onClick={() => onUpdateQuantity?.(product.id, -1)}
-                className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-lg transition-all active:scale-90"
+                className="p-2 md:p-2.5 bg-red-500/20 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/30 hover:border-red-500 rounded-lg transition-all active:scale-90"
               >
-                <Minus size={12} />
+                <Minus size={18} />
               </button>
               <div className="flex flex-col items-center">
-                <span className="text-[10px] md:text-xs font-black text-white">{currentQty}</span>
-                <span className="text-[6px] font-bold text-zinc-600 uppercase tracking-tighter">UNID.</span>
+                <span className="text-sm md:text-base font-black text-white">{currentQty}</span>
+                <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-tighter">UNID.</span>
               </div>
               <button 
                 onClick={() => onUpdateQuantity?.(product.id, 1)}
-                className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-lg transition-all active:scale-90"
+                className="p-2 md:p-2.5 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-white border border-emerald-500/30 hover:border-emerald-500 rounded-lg transition-all active:scale-90"
               >
-                <Plus size={12} />
+                <Plus size={18} />
               </button>
             </div>
           ) : (
@@ -84,13 +84,13 @@ const ProductCard: React.FC<ProductCardProps> = ({
             <button 
               onClick={() => !isOutOfStock && onAddToCart(product)}
               disabled={isOutOfStock}
-              className={`w-full py-1.5 md:py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 active:scale-95 border ${
+              className={`w-full py-2.5 md:py-3 rounded-xl font-black text-[10px] md:text-[11px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 active:scale-95 border ${
                 isOutOfStock 
                 ? 'bg-zinc-800 border-zinc-700 text-zinc-600 cursor-not-allowed' 
-                : 'bg-zinc-950 hover:bg-fuchsia-600 border-zinc-800 hover:border-fuchsia-400 text-zinc-400 hover:text-white shadow-xl'
+                : 'bg-emerald-600 hover:bg-emerald-500 border-emerald-500/50 hover:border-emerald-400 text-white shadow-lg shadow-emerald-900/40'
               }`}
             >
-              <Plus size={12} />
+              <Plus size={16} />
               Agregar
             </button>
           )}

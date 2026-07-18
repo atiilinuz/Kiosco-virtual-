@@ -68,10 +68,10 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                   </div>
                   
                   <div className="flex items-center justify-between mt-2">
-                    <div className="flex items-center bg-black/50 border border-zinc-800 rounded-xl p-1">
-                      <button onClick={() => onUpdateQuantity(item.id, -1)} className="p-1 text-zinc-500 hover:text-white"><Minus size={14} /></button>
-                      <span className="w-6 text-center font-black text-xs text-white">{item.quantity}</span>
-                      <button onClick={() => onUpdateQuantity(item.id, 1)} className="p-1 text-zinc-500 hover:text-white"><Plus size={14} /></button>
+                    <div className="flex items-center bg-black/50 border border-zinc-800 rounded-xl p-1.5">
+                      <button onClick={() => onUpdateQuantity(item.id, -1)} className="p-2 md:p-2.5 bg-red-500/20 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/30 hover:border-red-500 rounded-lg transition-all active:scale-90"><Minus size={18} /></button>
+                      <span className="w-10 text-center font-black text-base text-white">{item.quantity}</span>
+                      <button onClick={() => onUpdateQuantity(item.id, 1)} className="p-2 md:p-2.5 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-white border border-emerald-500/30 hover:border-emerald-500 rounded-lg transition-all active:scale-90"><Plus size={18} /></button>
                     </div>
                     <p className="text-fuchsia-400 font-black text-sm">{formatCurrency(item.price * item.quantity)}</p>
                   </div>

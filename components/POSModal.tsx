@@ -16,8 +16,12 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
   const [paymentMethod, setPaymentMethod] = useState<string>('efectivo');
   const [showTicketPreview, setShowTicketPreview] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [paidAmount, setPaidAmount] = useState<string>('');
   
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  const parsedPaidAmount = parseFloat(paidAmount) || 0;
+  const change = parsedPaidAmount > total ? parsedPaidAmount - total : 0;
 
   const handleFinishPayment = async () => {
     if (isProcessing) return;
@@ -69,12 +73,12 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
                 <div className="space-y-3">
                   <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-2">Resumen</h3>
                   {items.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center bg-zinc-950/30 p-3 rounded-xl border border-zinc-800/50">
-                      <div className="flex flex-col">
-                        <span className="text-white font-medium text-sm">{item.name}</span>
-                        <span className="text-zinc-500 text-[10px] uppercase font-bold">{item.quantity} unidades</span>
+                    <div key={item.id} className="flex justify-between items-center bg-zinc-900 p-4 rounded-2xl border border-zinc-800">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-white font-black text-lg tracking-tight leading-tight">{item.name}</span>
+                        <span className="text-zinc-400 text-xs font-bold uppercase tracking-wider">{item.quantity} unidades x {formatCurrency(item.price)}</span>
                       </div>
-                      <span className="text-white font-bold">{formatCurrency(item.price * item.quantity)}</span>
+                      <span className="text-emerald-400 font-black text-xl">{formatCurrency(item.price * item.quantity)}</span>
                     </div>
                   ))}
                 </div>
@@ -100,10 +104,37 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
                   </div>
                 </div>
 
+                {/* Amount Given (Efectivo) */}
+                {paymentMethod === 'efectivo' && (
+                  <div className="space-y-3 p-4 bg-zinc-950 border border-zinc-800 rounded-2xl animate-fade-in">
+                    <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Abona con</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 font-bold">$</span>
+                      <input 
+                        type="number" 
+                        min="0"
+                        step="0.01"
+                        value={paidAmount}
+                        onChange={(e) => setPaidAmount(e.target.value)}
+                        placeholder="Ej. 1000"
+                        className="w-full bg-black border border-zinc-800 rounded-xl p-4 pl-10 text-white font-bold outline-none focus:border-emerald-500 text-lg transition-all"
+                      />
+                    </div>
+                    {parsedPaidAmount > 0 && (
+                      <div className="flex justify-between items-center pt-3 border-t border-zinc-800/50 mt-3">
+                        <span className="text-zinc-500 text-xs font-bold uppercase">Vuelto a entregar</span>
+                        <span className={`text-xl font-black ${change > 0 ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                          {formatCurrency(change)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Total Summary */}
-                <div className="p-6 bg-zinc-950 border border-zinc-800 rounded-[2rem] text-center">
-                  <p className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Total a Cobrar</p>
-                  <p className="text-4xl font-black text-white">{formatCurrency(total)}</p>
+                <div className="p-6 bg-red-600 border border-red-500 rounded-[2rem] text-center shadow-lg shadow-red-900/20">
+                  <p className="text-red-200 text-xs md:text-sm font-black uppercase tracking-[0.2em] mb-1">Total a Cobrar</p>
+                  <p className="text-5xl md:text-6xl font-black text-white">{formatCurrency(total)}</p>
                 </div>
               </div>
             )}

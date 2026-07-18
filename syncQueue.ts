@@ -139,8 +139,11 @@ class SyncQueueManager {
         try {
           console.log(`[SyncQueue] Sincronizando venta ${item.sale.id} (Intento #${item.attempts + 1})...`);
           
-          // Intentar guardar en Firestore usando el servicio de base de datos
-          await dbService.executeSaleTransaction(item.sale);
+          // Intentar guardar usando el servicio de base de datos (evitando doble descuento de stock)
+          await dbService.executeSaleTransaction(item.sale, false);
+          
+          // Pequeña latencia artificial para que el usuario pueda percibir la sincronización fluida
+          await new Promise(resolve => setTimeout(resolve, 800));
 
           // Si tiene éxito, remover de la cola
           await syncDb.pendingSales.delete(item.id);

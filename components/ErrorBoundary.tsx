@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { dbService } from '../db';
 
 interface Props {
   children?: ReactNode;
@@ -27,14 +28,12 @@ class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
     try {
-      import('../db').then(({ dbService }) => {
-        dbService.logApplicationError(
-          `React Boundary: ${error.message}`,
-          error.stack,
-          'error',
-          errorInfo.componentStack || 'React Boundary'
-        );
-      }).catch(err => console.error('Error logging to DB in Boundary:', err));
+      dbService.logApplicationError(
+        `React Boundary: ${error.message}`,
+        error.stack,
+        'error',
+        errorInfo.componentStack || 'React Boundary'
+      ).catch(err => console.error('Error logging to DB in Boundary:', err));
     } catch (e) {
       console.error('Failed to invoke dbService in Boundary:', e);
     }

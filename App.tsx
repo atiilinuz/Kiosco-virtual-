@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, Suspense, useCallback } from 'react';
-import { Store, Zap, Scan, Calculator, ShoppingCart, LogOut, Search, Filter, X, Smartphone, Wifi, WifiOff, CreditCard, CloudOff, Mail, Phone, MessageCircle, LifeBuoy, Signal, Loader2 } from 'lucide-react';
+import { Store, Zap, Scan, Calculator, ShoppingCart, LogOut, Search, Filter, X, Smartphone, Wifi, WifiOff, CreditCard, CloudOff, Mail, Phone, MessageCircle, LifeBuoy, Signal, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { syncQueue } from './syncQueue';
 import Header from './components/Header';
 import CategoryFilter from './components/CategoryFilter';
 import ProductCard from './components/ProductCard';
@@ -96,16 +98,103 @@ const AppContent: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  
-  // No hay cola de sincronización externa pendiente en local-first
-  const pendingSyncCount = 0;
-  const isSyncing = false;
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncNotification, setSyncNotification] = useState<{
+    show: boolean;
+    initialCount: number;
+    currentCount: number;
+    status: 'syncing' | 'completed' | 'error';
+    errorMsg?: string;
+  } | null>(null);
 
+  const prevOnlineRef = useRef(navigator.onLine);
+
+  // Suscribirse a la cola de sincronización para actualizar contadores en tiempo real
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const updateSyncState = async () => {
+      const count = await syncQueue.getPendingCount();
+      const processing = syncQueue.getIsProcessing();
+      setPendingSyncCount(count);
+      setIsSyncing(processing);
+
+      setSyncNotification(prev => {
+        if (!prev || !prev.show) return prev;
+        
+        // Si el contador llega a 0 y estábamos sincronizando, marcar como completado
+        if (count === 0 && prev.status === 'syncing') {
+          return {
+            ...prev,
+            currentCount: 0,
+            status: 'completed'
+          };
+        }
+        
+        return {
+          ...prev,
+          currentCount: count
+        };
+      });
+    };
+
+    updateSyncState();
+
+    const unsubscribe = syncQueue.subscribe(() => {
+      updateSyncState();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Controlar eventos online/offline y disparar la notificación persistente
+  useEffect(() => {
+    const handleOnline = async () => {
+      setIsOnline(true);
+      
+      // Conexión recuperada!
+      if (!prevOnlineRef.current) {
+        const count = await syncQueue.getPendingCount();
+        if (count > 0) {
+          setSyncNotification({
+            show: true,
+            initialCount: count,
+            currentCount: count,
+            status: 'syncing'
+          });
+        }
+        // Iniciar la sincronización inmediatamente
+        syncQueue.processQueue();
+      }
+      prevOnlineRef.current = true;
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      prevOnlineRef.current = false;
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+
+    // Si la app se monta en línea y ya tiene ítems acumulados pendientes, mostrar notificación
+    const checkInitialPending = async () => {
+      if (navigator.onLine) {
+        const count = await syncQueue.getPendingCount();
+        if (count > 0) {
+          setSyncNotification({
+            show: true,
+            initialCount: count,
+            currentCount: count,
+            status: 'syncing'
+          });
+          syncQueue.processQueue();
+        }
+      }
+    };
+    checkInitialPending();
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -288,6 +377,7 @@ const AppContent: React.FC = () => {
     // Registrar venta y descontar stock localmente
     try {
       await dbService.executeSaleTransaction(newSale);
+      await syncQueue.enqueueSale(newSale);
     } catch (error) {
       console.error("Error registrando la venta:", error);
     }
@@ -330,6 +420,7 @@ const AppContent: React.FC = () => {
      // Registrar recarga virtual localmente
      try {
        await dbService.executeSaleTransaction(newSale);
+       await syncQueue.enqueueSale(newSale);
      } catch (error) {
        console.error("Error registrando la recarga:", error);
      }
@@ -667,6 +758,108 @@ const AppContent: React.FC = () => {
          onClose={() => setShowSuccess(false)}
          message={successMessage}
        />
+
+       <AnimatePresence>
+         {syncNotification?.show && (
+           <motion.div
+             initial={{ opacity: 0, y: 50, scale: 0.95 }}
+             animate={{ opacity: 1, y: 0, scale: 1 }}
+             exit={{ opacity: 0, y: 20, scale: 0.95 }}
+             className="fixed bottom-24 right-4 z-50 max-w-sm w-full bg-zinc-900/95 border border-zinc-800 rounded-3xl p-5 shadow-2xl shadow-black/80 backdrop-blur-md overflow-hidden"
+           >
+             {/* Progress bar tracker */}
+             <div className="absolute top-0 left-0 w-full h-1 bg-zinc-800">
+               <motion.div 
+                 className={`h-full transition-colors duration-500 ${syncNotification.status === 'completed' ? 'bg-emerald-500' : 'bg-fuchsia-500'}`}
+                 initial={{ width: '0%' }}
+                 animate={{ 
+                   width: syncNotification.initialCount > 0 
+                     ? `${((syncNotification.initialCount - syncNotification.currentCount) / syncNotification.initialCount) * 100}%` 
+                     : '100%' 
+                 }}
+                 transition={{ duration: 0.4 }}
+               />
+             </div>
+
+             <div className="flex gap-4 items-start pt-1">
+               {/* Status Indicator Icon */}
+               <div className="mt-1 shrink-0">
+                 {syncNotification.status === 'syncing' && (
+                   <div className="bg-fuchsia-500/10 p-2.5 rounded-2xl text-fuchsia-400">
+                     <RefreshCw size={22} className="animate-spin" />
+                   </div>
+                 )}
+                 {syncNotification.status === 'completed' && (
+                   <div className="bg-emerald-500/10 p-2.5 rounded-2xl text-emerald-400">
+                     <CheckCircle2 size={22} className="animate-bounce" />
+                   </div>
+                 )}
+                 {syncNotification.status === 'error' && (
+                   <div className="bg-red-500/10 p-2.5 rounded-2xl text-red-400">
+                     <AlertCircle size={22} />
+                   </div>
+                 )}
+               </div>
+
+               {/* Notification Text details */}
+               <div className="flex-1 min-w-0">
+                 <div className="flex items-center justify-between">
+                   <h4 className="text-sm font-black uppercase tracking-wider text-white">
+                     {syncNotification.status === 'syncing' && "Sincronizando..."}
+                     {syncNotification.status === 'completed' && "Sincronizado"}
+                     {syncNotification.status === 'error' && "Error de Sincronización"}
+                   </h4>
+                   <button 
+                     onClick={() => setSyncNotification(null)}
+                     className="text-zinc-500 hover:text-zinc-300 transition-colors p-1 rounded-full hover:bg-zinc-800"
+                   >
+                     <X size={16} />
+                   </button>
+                 </div>
+
+                 <p className="text-xs text-zinc-400 mt-1.5 font-medium leading-relaxed">
+                   {syncNotification.status === 'syncing' && (
+                     <>
+                       Se detectó conexión restablecida. Sincronizando{' '}
+                       <span className="text-fuchsia-400 font-bold">
+                         {syncNotification.initialCount - syncNotification.currentCount}
+                       </span>{' '}
+                       de{' '}
+                       <span className="text-white font-black">
+                         {syncNotification.initialCount}
+                       </span>{' '}
+                       operaciones locales pendientes...
+                     </>
+                   )}
+                   {syncNotification.status === 'completed' && (
+                     <>
+                       ¡Conexión recuperada con éxito! Se han sincronizado todas las{' '}
+                       <span className="text-emerald-400 font-black">
+                         {syncNotification.initialCount}
+                       </span>{' '}
+                       operaciones locales pendientes.
+                     </>
+                   )}
+                   {syncNotification.status === 'error' && (
+                     <>
+                       Ocurrió un problema al subir algunas operaciones: {syncNotification.errorMsg}
+                     </>
+                   )}
+                 </p>
+
+                 {/* Visual helper showing items queue count */}
+                 {syncNotification.status === 'syncing' && (
+                   <div className="mt-3 flex gap-2">
+                     <span className="text-[10px] font-black uppercase text-zinc-400 bg-black/60 border border-zinc-800/80 px-2.5 py-1 rounded-lg animate-pulse">
+                       En Cola: {syncNotification.currentCount} restantes
+                     </span>
+                   </div>
+                 )}
+               </div>
+             </div>
+           </motion.div>
+         )}
+       </AnimatePresence>
 
        <button
          onClick={handleLogout}

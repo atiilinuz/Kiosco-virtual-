@@ -199,9 +199,9 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen, onClo
                        <p className="text-fuchsia-400 font-bold text-xs">{formatCurrency(item.price * item.quantity)}</p>
                      </div>
                      <div className="flex items-center gap-2 bg-zinc-900 rounded-lg p-1">
-                       <button onClick={() => handleUpdateQuantity(item.id, -1)} className="p-1 text-zinc-500 hover:text-white"><Minus size={14} /></button>
-                       <span className="text-xs font-black text-white w-4 text-center">{item.quantity}</span>
-                       <button onClick={() => handleUpdateQuantity(item.id, 1)} className="p-1 text-zinc-500 hover:text-white"><Plus size={14} /></button>
+                       <button onClick={() => handleUpdateQuantity(item.id, -1)} className="p-1.5 bg-red-500/20 hover:bg-red-500 text-red-500 hover:text-white rounded-md transition-all"><Minus size={14} /></button>
+                       <span className="text-sm font-black text-white w-6 text-center">{item.quantity}</span>
+                       <button onClick={() => handleUpdateQuantity(item.id, 1)} className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-white rounded-md transition-all"><Plus size={14} /></button>
                      </div>
                      <button onClick={() => handleRemoveItem(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={16} /></button>
                    </div>

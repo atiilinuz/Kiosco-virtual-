@@ -143,16 +143,18 @@ export const dbService = {
   async addSale(sale: Sale) {
     await db.sales.put(sale);
   },
-  async executeSaleTransaction(newSale: Sale) {
+  async executeSaleTransaction(newSale: Sale, deductStock = true) {
     // 1. Registrar la venta localmente de inmediato
     await db.sales.put(newSale);
 
-    // 2. Descontar stock de cada ítem de manera offline-resiliente
-    for (const item of newSale.items) {
-      const prod = await db.products.get(item.id);
-      if (prod) {
-        const newStock = Math.max(0, (prod.stock || 0) - item.quantity);
-        await db.products.update(item.id, { stock: newStock });
+    if (deductStock) {
+      // 2. Descontar stock de cada ítem de manera offline-resiliente
+      for (const item of newSale.items) {
+        const prod = await db.products.get(item.id);
+        if (prod) {
+          const newStock = Math.max(0, (prod.stock || 0) - item.quantity);
+          await db.products.update(item.id, { stock: newStock });
+        }
       }
     }
   },

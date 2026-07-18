@@ -201,6 +201,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const allUsers = await db.users.toArray();
       const allSuppliers = await db.suppliers.toArray();
       const allLogs = await db.logs.toArray();
+      const allProductLogs = await db.productLogs.toArray();
+      const allErrorLogs = await db.errorLogs.toArray();
 
       const allData = {
         products: allProducts,
@@ -208,8 +210,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         users: allUsers,
         suppliers: allSuppliers,
         logs: allLogs,
+        productLogs: allProductLogs,
+        errorLogs: allErrorLogs,
         timestamp: new Date().toISOString(),
-        version: "2.9.1"
+        version: "2.9.2"
       };
       
       const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
