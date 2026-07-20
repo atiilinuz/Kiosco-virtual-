@@ -278,7 +278,7 @@ const CashClosureModal: React.FC<CashClosureModalProps> = ({ isOpen, onClose, cu
           </div>
 
           {/* Grand Total */}
-          <div className="bg-gradient-to-br from-fuchsia-600/20 to-violet-600/20 p-8 rounded-[2rem] border border-fuchsia-500/30 text-center relative overflow-hidden group">
+          <div className="bg-gradient-to-br from-fuchsia-600/20 to-violet-600/20 p-8 rounded-[2rem] border border-fuchsia-500/30 text-center relative overflow-hidden group animate-latido">
             <div className="absolute inset-0 bg-gradient-to-r from-fuchsia-600 to-violet-600 opacity-0 group-hover:opacity-10 transition-opacity"></div>
             <p className="text-fuchsia-300 text-xs font-black uppercase tracking-[0.2em] mb-2">Total Recaudado en Sesión</p>
             <p className="text-5xl font-black text-white drop-shadow-lg">{formatCurrency(totals.totalAmount)}</p>

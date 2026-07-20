@@ -83,22 +83,20 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
 
         {/* IMPORTE TOTAL GIGANTE Y ADAPTABLE */}
         {items.length > 0 && (
-          <div className="absolute bottom-0 inset-x-0 p-8 pb-[calc(2.5rem+env(safe-area-inset-bottom))] border-t border-white/5 bg-zinc-950/95 backdrop-blur-3xl shadow-[0_-40px_80px_rgba(0,0,0,0.9)] z-30 flex flex-col items-center">
-            <div className="flex items-center gap-2 mb-2">
-              <Receipt size={16} className="text-fuchsia-500" />
-              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.4em]">Total a pagar</span>
-            </div>
-            
-            <div className="relative">
-              <div className="absolute -inset-6 bg-fuchsia-600/10 blur-[40px] rounded-full animate-pulse" />
-              <span className="relative text-7xl sm:text-8xl font-black text-white tracking-tighter tabular-nums">
+          <div className="absolute bottom-0 inset-x-0 p-8 pb-[calc(2.5rem+env(safe-area-inset-bottom))] border-t border-white/5 bg-zinc-950/95 backdrop-blur-3xl shadow-[0_-40px_80px_rgba(0,0,0,0.9)] z-30 flex flex-col items-stretch">
+            <div className="bg-gradient-to-br from-fuchsia-600/20 to-violet-600/20 p-8 rounded-[2rem] border border-fuchsia-500/30 text-center relative overflow-hidden group mb-6 animate-latido">
+              <div className="absolute inset-0 bg-gradient-to-r from-fuchsia-600 to-violet-600 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
+              <p className="text-fuchsia-300 text-xs font-black uppercase tracking-[0.2em] mb-2 relative z-10 flex items-center justify-center gap-2">
+                <Receipt size={16} /> Total a Pagar
+              </p>
+              <p className="text-6xl sm:text-7xl font-black text-white drop-shadow-lg relative z-10 tabular-nums tracking-tighter">
                 {formatCurrency(total)}
-              </span>
+              </p>
             </div>
 
             <button 
               onClick={onCheckout}
-              className="mt-6 w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-4 rounded-2xl shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 active:scale-95 uppercase tracking-widest text-sm"
+              className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-4 rounded-2xl shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 active:scale-95 uppercase tracking-widest text-sm"
             >
               Confirmar Pedido <ArrowRight size={20} />
             </button>

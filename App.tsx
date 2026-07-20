@@ -323,6 +323,23 @@ const AppContent: React.FC = () => {
     setCart([]);
   }, []);
 
+  // Logout admin on visibility change (switching apps)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        if (currentUser && currentUser.role === 'admin') {
+          handleLogout();
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [currentUser, handleLogout]);
+
   const addToCart = useCallback((product: Product) => {
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);

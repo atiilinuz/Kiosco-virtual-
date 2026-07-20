@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { memo } from 'react';
 import { Plus, Minus, Layers, ShoppingCart } from 'lucide-react';
 import { Product, CartItem } from '../types';
 import { formatCurrency } from '../utils';
@@ -12,7 +12,7 @@ interface ProductCardProps {
   onUpdateQuantity?: (id: string, delta: number) => void;
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ 
+const ProductCard: React.FC<ProductCardProps> = memo(({ 
   product, 
   onAddToCart, 
   currentQty = 0, 
@@ -98,6 +98,6 @@ const ProductCard: React.FC<ProductCardProps> = ({
       </div>
     </div>
   );
-};
+});
 
 export default ProductCard;

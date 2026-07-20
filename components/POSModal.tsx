@@ -132,9 +132,10 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
                 )}
 
                 {/* Total Summary */}
-                <div className="p-6 bg-red-600 border border-red-500 rounded-[2rem] text-center shadow-lg shadow-red-900/20">
-                  <p className="text-red-200 text-xs md:text-sm font-black uppercase tracking-[0.2em] mb-1">Total a Cobrar</p>
-                  <p className="text-5xl md:text-6xl font-black text-white">{formatCurrency(total)}</p>
+                <div className="bg-gradient-to-br from-fuchsia-600/20 to-violet-600/20 p-6 md:p-8 rounded-[2rem] border border-fuchsia-500/30 text-center relative overflow-hidden group shadow-lg shadow-fuchsia-900/20 mt-4 animate-latido">
+                  <div className="absolute inset-0 bg-gradient-to-r from-fuchsia-600 to-violet-600 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
+                  <p className="text-fuchsia-300 text-xs md:text-sm font-black uppercase tracking-[0.2em] mb-2 relative z-10">Total a Cobrar</p>
+                  <p className="text-5xl md:text-6xl font-black text-white drop-shadow-lg relative z-10">{formatCurrency(total)}</p>
                 </div>
               </div>
             )}
