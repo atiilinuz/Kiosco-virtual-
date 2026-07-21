@@ -106,10 +106,10 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
 
                 {/* Amount Given (Efectivo) */}
                 {paymentMethod === 'efectivo' && (
-                  <div className="space-y-3 p-4 bg-zinc-950 border border-zinc-800 rounded-2xl animate-fade-in">
-                    <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Abona con</label>
+                  <div className="space-y-4 p-5 bg-zinc-900 border border-zinc-700 rounded-2xl animate-fade-in shadow-xl">
+                    <label className="text-xs sm:text-sm font-black text-zinc-300 uppercase tracking-widest">Abona con</label>
                     <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 font-bold">$</span>
+                      <span className="absolute left-5 top-1/2 -translate-y-1/2 text-zinc-500 font-black text-2xl">$</span>
                       <input 
                         type="number" 
                         min="0"
@@ -117,13 +117,13 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
                         value={paidAmount}
                         onChange={(e) => setPaidAmount(e.target.value)}
                         placeholder="Ej. 1000"
-                        className="w-full bg-black border border-zinc-800 rounded-xl p-4 pl-10 text-white font-bold outline-none focus:border-emerald-500 text-lg transition-all"
+                        className="w-full bg-black border-2 border-zinc-700/50 rounded-xl py-4 pl-12 pr-4 text-white font-black outline-none focus:border-cyan-500 text-3xl sm:text-4xl transition-all"
                       />
                     </div>
                     {parsedPaidAmount > 0 && (
-                      <div className="flex justify-between items-center pt-3 border-t border-zinc-800/50 mt-3">
-                        <span className="text-zinc-500 text-xs font-bold uppercase">Vuelto a entregar</span>
-                        <span className={`text-xl font-black ${change > 0 ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                      <div className="flex flex-col items-center pt-5 border-t border-zinc-800 mt-5 gap-2 bg-black/40 rounded-xl p-4">
+                        <span className="text-zinc-400 text-xs sm:text-sm font-black uppercase tracking-[0.2em]">Vuelto a entregar</span>
+                        <span className={`text-5xl sm:text-6xl font-black tracking-tighter ${change > 0 ? 'text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]' : 'text-zinc-500'}`}>
                           {formatCurrency(change)}
                         </span>
                       </div>
