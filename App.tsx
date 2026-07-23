@@ -6,17 +6,18 @@ import Header from './components/Header';
 import CategoryFilter from './components/CategoryFilter';
 import ProductCard from './components/ProductCard';
 import Cart from './components/Cart';
-import POSModal from './components/POSModal';
-import CashClosureModal from './components/CashClosureModal';
-import SuccessOverlay from './components/SuccessOverlay';
-import ServiceRechargeModal from './components/ServiceRechargeModal';
-import Login from './components/Login';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Product, CartItem, Supplier, AppUser, LoginLog, Sale } from './types';
 import { db, initDB, dbService, auth, handleFirestoreError, OperationType } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { playAddSound, playSuccessSound } from './audio';
 
 // Lazy Loading de componentes pesados
+const POSModal = React.lazy(() => import('./components/POSModal'));
+const CashClosureModal = React.lazy(() => import('./components/CashClosureModal'));
+const SuccessOverlay = React.lazy(() => import('./components/SuccessOverlay'));
+const ServiceRechargeModal = React.lazy(() => import('./components/ServiceRechargeModal'));
+const Login = React.lazy(() => import('./components/Login'));
 const AdminDashboard = React.lazy(() => import('./components/AdminDashboard'));
 const BarcodeScannerModal = React.lazy(() => import('./components/BarcodeScannerModal'));
 
@@ -341,6 +342,7 @@ const AppContent: React.FC = () => {
   }, [currentUser, handleLogout]);
 
   const addToCart = useCallback((product: Product) => {
+    playAddSound();
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
@@ -404,6 +406,7 @@ const AppContent: React.FC = () => {
     setIsScannerOpen(false);
     setSuccessMessage(paymentMethod === 'transferencia' ? 'PAGO RECIBIDO' : 'VENTA FINALIZADA');
     setShowSuccess(true);
+    playSuccessSound();
     setTimeout(() => setShowSuccess(false), 2000);
     
     setTimeout(() => {
@@ -578,7 +581,11 @@ const AppContent: React.FC = () => {
   }
 
   if (role === 'guest') {
-    return <Login users={users} onLogin={handleLogin} showInstallBtn={showInstallBtn} onInstallClick={handleInstallClick} isOnline={isOnline} />;
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-fuchsia-500" size={40} /></div>}>
+        <Login users={users} onLogin={handleLogin} showInstallBtn={showInstallBtn} onInstallClick={handleInstallClick} isOnline={isOnline} />
+      </Suspense>
+    );
   }
 
   if (role === 'admin') {
@@ -740,41 +747,41 @@ const AppContent: React.FC = () => {
          onCheckout={handleCartCheckout}
        />
 
-       <POSModal
-         isOpen={isPOSOpen}
-         onClose={() => setIsPOSOpen(false)}
-         items={cart}
-         onCompleteSale={handleCompleteSale}
-       />
-
        <Suspense fallback={null}>
+         <POSModal
+           isOpen={isPOSOpen}
+           onClose={() => setIsPOSOpen(false)}
+           items={cart}
+           onCompleteSale={handleCompleteSale}
+         />
+
          <BarcodeScannerModal
            isOpen={isScannerOpen}
            onClose={() => setIsScannerOpen(false)}
            allProducts={products}
            onCompleteSale={handleCompleteSale}
          />
+
+         <CashClosureModal
+           isOpen={cashClosureOpen}
+           onClose={() => setCashClosureOpen(false)}
+           currentUser={currentUser}
+           sales={sales}
+         />
+
+         <ServiceRechargeModal
+            isOpen={!!rechargeService}
+            onClose={() => setRechargeService(null)}
+            service={rechargeService}
+            onComplete={handleServiceRecharge}
+         />
+
+         <SuccessOverlay
+           isOpen={showSuccess}
+           onClose={() => setShowSuccess(false)}
+           message={successMessage}
+         />
        </Suspense>
-
-       <CashClosureModal
-         isOpen={cashClosureOpen}
-         onClose={() => setCashClosureOpen(false)}
-         currentUser={currentUser}
-         sales={sales}
-       />
-
-       <ServiceRechargeModal
-          isOpen={!!rechargeService}
-          onClose={() => setRechargeService(null)}
-          service={rechargeService}
-          onComplete={handleServiceRecharge}
-       />
-
-       <SuccessOverlay
-         isOpen={showSuccess}
-         onClose={() => setShowSuccess(false)}
-         message={successMessage}
-       />
 
        <AnimatePresence>
          {syncNotification?.show && (
