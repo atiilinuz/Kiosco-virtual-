@@ -71,7 +71,18 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                     <div className="flex items-center bg-black/50 border border-zinc-800 rounded-xl p-1.5">
                       <button onClick={() => onUpdateQuantity(item.id, -1)} className="p-2 md:p-2.5 bg-red-500/20 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/30 hover:border-red-500 rounded-lg transition-all active:scale-90"><Minus size={18} /></button>
                       <span className="w-10 text-center font-black text-base text-white">{item.quantity}</span>
-                      <button onClick={() => onUpdateQuantity(item.id, 1)} className="p-2 md:p-2.5 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-white border border-emerald-500/30 hover:border-emerald-500 rounded-lg transition-all active:scale-90"><Plus size={18} /></button>
+                      <button 
+                        onClick={() => item.quantity < item.stock && onUpdateQuantity(item.id, 1)} 
+                        disabled={item.quantity >= item.stock}
+                        title={item.quantity >= item.stock ? "Stock máximo alcanzado" : "Aumentar cantidad"}
+                        className={`p-2 md:p-2.5 rounded-lg transition-all border ${
+                          item.quantity >= item.stock
+                            ? 'bg-zinc-800/50 border-zinc-700/50 text-zinc-600 cursor-not-allowed opacity-50'
+                            : 'bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-white border-emerald-500/30 hover:border-emerald-500 active:scale-90'
+                        }`}
+                      >
+                        <Plus size={18} />
+                      </button>
                     </div>
                     <p className="text-fuchsia-400 font-black text-sm">{formatCurrency(item.price * item.quantity)}</p>
                   </div>

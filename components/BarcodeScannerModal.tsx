@@ -96,9 +96,13 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen, onClo
   };
 
   const handleAddItem = (product: Product) => {
+    if (product.stock <= 0) return;
     setScannedItems(prev => {
       const existing = prev.find(i => i.id === product.id);
       if (existing) {
+        if (existing.quantity >= product.stock) {
+          return prev;
+        }
         return prev.map(i => i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
       }
       return [...prev, { ...product, quantity: 1 }];
@@ -109,7 +113,11 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen, onClo
     setScannedItems(prev => {
       return prev.map(item => {
         if (item.id === id) {
-          return { ...item, quantity: Math.max(0, item.quantity + delta) };
+          const newQty = item.quantity + delta;
+          if (delta > 0 && newQty > item.stock) {
+            return { ...item, quantity: item.stock };
+          }
+          return { ...item, quantity: Math.max(0, newQty) };
         }
         return item;
       }).filter(i => i.quantity > 0);
@@ -201,7 +209,7 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen, onClo
                      <div className="flex items-center gap-2 bg-zinc-900 rounded-lg p-1">
                        <button onClick={() => handleUpdateQuantity(item.id, -1)} className="p-1.5 bg-red-500/20 hover:bg-red-500 text-red-500 hover:text-white rounded-md transition-all"><Minus size={14} /></button>
                        <span className="text-sm font-black text-white w-6 text-center">{item.quantity}</span>
-                       <button onClick={() => handleUpdateQuantity(item.id, 1)} className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-white rounded-md transition-all"><Plus size={14} /></button>
+                       <button onClick={() => item.quantity < item.stock && handleUpdateQuantity(item.id, 1)} disabled={item.quantity >= item.stock} title={item.quantity >= item.stock ? "Stock máximo alcanzado" : "Aumentar cantidad"} className={`p-1.5 rounded-md transition-all ${item.quantity >= item.stock ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed opacity-50' : 'bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-white'}`}><Plus size={14} /></button>
                      </div>
                      <button onClick={() => handleRemoveItem(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={16} /></button>
                    </div>

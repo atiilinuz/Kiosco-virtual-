@@ -73,8 +73,14 @@ const ProductCard: React.FC<ProductCardProps> = memo(({
                 <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-tighter">UNID.</span>
               </div>
               <button 
-                onClick={() => onUpdateQuantity?.(product.id, 1)}
-                className="p-2 md:p-2.5 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-white border border-emerald-500/30 hover:border-emerald-500 rounded-lg transition-all active:scale-90"
+                onClick={() => currentQty < product.stock && onUpdateQuantity?.(product.id, 1)}
+                disabled={currentQty >= product.stock}
+                title={currentQty >= product.stock ? "Stock máximo alcanzado" : "Aumentar cantidad"}
+                className={`p-2 md:p-2.5 rounded-lg transition-all border ${
+                  currentQty >= product.stock
+                    ? 'bg-zinc-800/50 border-zinc-700/50 text-zinc-600 cursor-not-allowed opacity-50'
+                    : 'bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-white border-emerald-500/30 hover:border-emerald-500 active:scale-90'
+                }`}
               >
                 <Plus size={18} />
               </button>

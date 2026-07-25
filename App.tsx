@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, Suspense, useCallback } from 'react';
-import { Store, Zap, Scan, Calculator, ShoppingCart, LogOut, Search, Filter, X, Smartphone, Wifi, WifiOff, CreditCard, CloudOff, Mail, Phone, MessageCircle, LifeBuoy, Signal, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Store, Zap, Scan, Calculator, ShoppingCart, LogOut, Search, Filter, X, Smartphone, Wifi, WifiOff, CreditCard, CloudOff, Mail, Phone, MessageCircle, LifeBuoy, Signal, Loader2, AlertCircle, CheckCircle2, RefreshCw, Keyboard, KeyboardOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncQueue } from './syncQueue';
 import Header from './components/Header';
@@ -90,6 +90,7 @@ const AppContent: React.FC = () => {
   const [isPOSOpen, setIsPOSOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isVirtualKeyboardActive, setIsVirtualKeyboardActive] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('VENTA FINALIZADA');
@@ -342,12 +343,18 @@ const AppContent: React.FC = () => {
   }, [currentUser, handleLogout]);
 
   const addToCart = useCallback((product: Product) => {
-    playAddSound();
+    if (product.stock <= 0) return;
+    
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
+        if (existing.quantity >= product.stock) {
+          return prev;
+        }
+        playAddSound();
         return prev.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
       }
+      playAddSound();
       return [...prev, { ...product, quantity: 1 }];
     });
 
@@ -361,7 +368,11 @@ const AppContent: React.FC = () => {
   const updateQuantity = useCallback((id: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
-        return { ...item, quantity: Math.max(0, item.quantity + delta) };
+        const newQty = item.quantity + delta;
+        if (delta > 0 && newQty > item.stock) {
+          return { ...item, quantity: item.stock };
+        }
+        return { ...item, quantity: Math.max(0, newQty) };
       }
       return item;
     }).filter(item => item.quantity > 0));
@@ -644,20 +655,83 @@ const AppContent: React.FC = () => {
                 </button>
             </div>
 
-            <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500">
-                <Search size={20} />
+            <div className="space-y-2">
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500">
+                  <Search size={20} />
+                </div>
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  inputMode={isVirtualKeyboardActive ? "text" : "none"}
+                  autoComplete="off" 
+                  placeholder="Escaneá o escribí tu búsqueda..."
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-white focus:border-fuchsia-500 outline-none shadow-lg shadow-black/20 text-lg transition-all focus:ring-2 focus:ring-fuchsia-500/20"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onClick={() => {
+                    if (!isVirtualKeyboardActive) {
+                      setIsVirtualKeyboardActive(true);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && searchTerm.trim()) {
+                      const term = searchTerm.trim().toLowerCase();
+                      const exactMatch = products.find(p => p.barcode && p.barcode.toLowerCase() === term) ||
+                                         (filteredProducts.length === 1 ? filteredProducts[0] : null);
+                      if (exactMatch) {
+                        addToCart(exactMatch);
+                      }
+                    }
+                  }}
+                />
               </div>
-              <input
-                ref={searchInputRef}
-                type="text"
-                autoComplete="off" 
-                placeholder="Escaneá o escribí tu búsqueda..."
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-white focus:border-fuchsia-500 outline-none shadow-lg shadow-black/20 text-lg transition-all focus:ring-2 focus:ring-fuchsia-500/20"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                autoFocus
-              />
+
+              {/* Botón de control de teclado por debajo de la caja de búsqueda */}
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isVirtualKeyboardActive) {
+                      setIsVirtualKeyboardActive(true);
+                      setTimeout(() => {
+                        searchInputRef.current?.focus();
+                      }, 50);
+                    } else {
+                      setIsVirtualKeyboardActive(false);
+                      searchInputRef.current?.blur();
+                    }
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-sm active:scale-95 ${
+                    isVirtualKeyboardActive
+                      ? 'bg-fuchsia-600 border-fuchsia-500 text-white shadow-fuchsia-900/30'
+                      : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-800 hover:border-zinc-700'
+                  }`}
+                >
+                  {isVirtualKeyboardActive ? (
+                    <>
+                      <KeyboardOff size={16} />
+                      <span>Ocultar Teclado (Modo Escáner)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Keyboard size={16} />
+                      <span>Abrir Teclado Táctil</span>
+                    </>
+                  )}
+                </button>
+
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="text-xs text-zinc-400 hover:text-white flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors"
+                  >
+                    <X size={14} />
+                    <span>Limpiar</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             <CategoryFilter
