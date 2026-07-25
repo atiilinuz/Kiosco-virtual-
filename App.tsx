@@ -475,19 +475,19 @@ const AppContent: React.FC = () => {
     }, 2100);
   }, [currentUser]);
 
-  const handleServiceRecharge = useCallback(async (amount: number, method: string) => {
+  const handleServiceRecharge = useCallback(async (amount: number, method: string, destinationNumber?: string) => {
      const newSale: Sale = {
         id: `service-${Date.now()}`,
         userId: currentUser?.id || 'unknown',
         username: currentUser?.username || 'unknown',
         items: [{
             id: rechargeService?.id || 'service',
-            name: `Recarga ${rechargeService?.name}`,
+            name: `Recarga ${rechargeService?.name}${destinationNumber ? ` (${destinationNumber})` : ''}`,
             price: amount,
             quantity: 1,
             category: 'servicios',
             image: '',
-            description: 'Recarga virtual',
+            description: `Recarga virtual ${destinationNumber || ''}`,
             stock: 9999
         }],
         total: amount,
@@ -502,10 +502,6 @@ const AppContent: React.FC = () => {
      } catch (error) {
        console.error("Error registrando la recarga:", error);
      }
-
-     setShowSuccess(true);
-     setSuccessMessage("RECARGA EXITOSA");
-     setTimeout(() => setShowSuccess(false), 2000);
   }, [currentUser, rechargeService]);
 
   // --- Handlers para AdminDashboard (Wrappers de DB) ---
