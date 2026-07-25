@@ -120,6 +120,35 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
                         className="w-full bg-black border-2 border-zinc-700/50 rounded-xl py-4 pl-12 pr-4 text-white font-black outline-none focus:border-cyan-500 text-3xl sm:text-4xl transition-all"
                       />
                     </div>
+
+                    {/* Botones de billetes comunes para cálculo rápido de vuelto */}
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Monto rápido:</span>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPaidAmount(total.toString())}
+                          className="px-3 py-1.5 bg-zinc-800 hover:bg-emerald-600 hover:text-white text-zinc-300 text-xs font-bold rounded-lg transition-colors border border-zinc-700"
+                        >
+                          Exacto ({formatCurrency(total)})
+                        </button>
+                        {[1000, 2000, 5000, 10000, 20000].map((denomination) => (
+                          <button
+                            key={denomination}
+                            type="button"
+                            onClick={() => setPaidAmount(denomination.toString())}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors border ${
+                              denomination >= total
+                                ? 'bg-zinc-800 hover:bg-cyan-600 hover:text-white text-cyan-400 border-zinc-700'
+                                : 'bg-zinc-900 text-zinc-600 border-zinc-800 opacity-50'
+                            }`}
+                          >
+                            ${denomination.toLocaleString('es-AR')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     {parsedPaidAmount > 0 && (
                       <div className="flex flex-col items-center pt-5 border-t border-zinc-800 mt-5 gap-2 bg-black/40 rounded-xl p-4">
                         <span className="text-zinc-400 text-xs sm:text-sm font-black uppercase tracking-[0.2em]">Vuelto a entregar</span>

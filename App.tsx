@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, Suspense, useCallback } from 'react';
-import { Store, Zap, Scan, Calculator, ShoppingCart, LogOut, Search, Filter, X, Smartphone, Wifi, WifiOff, CreditCard, CloudOff, Mail, Phone, MessageCircle, LifeBuoy, Signal, Loader2, AlertCircle, CheckCircle2, RefreshCw, Keyboard, KeyboardOff } from 'lucide-react';
+import { Store, Zap, Scan, Calculator, ShoppingCart, LogOut, Search, Filter, X, Smartphone, Wifi, WifiOff, CreditCard, CloudOff, Mail, Phone, MessageCircle, LifeBuoy, Signal, Loader2, AlertCircle, CheckCircle2, RefreshCw, Keyboard, KeyboardOff, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncQueue } from './syncQueue';
 import Header from './components/Header';
@@ -7,6 +7,7 @@ import CategoryFilter from './components/CategoryFilter';
 import ProductCard from './components/ProductCard';
 import Cart from './components/Cart';
 import ErrorBoundary from './components/ErrorBoundary';
+import UserHelpModal from './components/UserHelpModal';
 import { Product, CartItem, Supplier, AppUser, LoginLog, Sale } from './types';
 import { db, initDB, dbService, auth, handleFirestoreError, OperationType } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -97,6 +98,7 @@ const AppContent: React.FC = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [rechargeService, setRechargeService] = useState<typeof SERVICES[0] | null>(null);
   const [cashClosureOpen, setCashClosureOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -290,6 +292,47 @@ const AppContent: React.FC = () => {
     localStorage.setItem('kiosco_cart', JSON.stringify(cart));
   }, [cart]);
 
+  // Atajos de teclado globales (Hotkeys POS)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if ((activeTag === 'input' && document.activeElement !== searchInputRef.current) || activeTag === 'textarea') {
+        if (e.key === 'Escape') {
+          setIsPOSOpen(false);
+          setIsCartOpen(false);
+          setIsScannerOpen(false);
+          setCashClosureOpen(false);
+          setIsHelpOpen(false);
+        }
+        return;
+      }
+
+      if (e.key === 'F2' || (e.ctrlKey && e.key.toLowerCase() === 'k')) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === 'F4' || e.key === 'F9') {
+        e.preventDefault();
+        setIsPOSOpen(true);
+      } else if (e.key === 'F8') {
+        e.preventDefault();
+        setIsScannerOpen(true);
+      } else if (e.key === 'F3') {
+        e.preventDefault();
+        setIsCartOpen(prev => !prev);
+      } else if (e.key === 'Escape') {
+        setIsPOSOpen(false);
+        setIsCartOpen(false);
+        setIsScannerOpen(false);
+        setCashClosureOpen(false);
+        setIsHelpOpen(false);
+        setSearchTerm('');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Funciones obsoletas, eliminadas ya que usamos useLiveQuery
 
   // Derived state
@@ -300,7 +343,11 @@ const AppContent: React.FC = () => {
     return products.filter(p => {
       const matchesSearch = p.name.toLowerCase().includes(term) ||
                             (p.barcode && p.barcode.includes(term));
-      const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
+      const matchesCategory = selectedCategory === 'all' 
+        ? true 
+        : selectedCategory === 'popular'
+          ? p.isPopular
+          : p.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
   }, [products, searchTerm, selectedCategory]);
@@ -342,20 +389,20 @@ const AppContent: React.FC = () => {
     };
   }, [currentUser, handleLogout]);
 
-  const addToCart = useCallback((product: Product) => {
-    if (product.stock <= 0) return;
+  const addToCart = useCallback((product: Product, quantityToAdd: number = 1) => {
+    if (product.stock <= 0 || quantityToAdd <= 0) return;
     
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
-        if (existing.quantity >= product.stock) {
-          return prev;
-        }
+        const newQty = Math.min(product.stock, existing.quantity + quantityToAdd);
+        if (newQty === existing.quantity) return prev;
         playAddSound();
-        return prev.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
+        return prev.map(item => item.id === product.id ? { ...item, quantity: newQty } : item);
       }
       playAddSound();
-      return [...prev, { ...product, quantity: 1 }];
+      const initialQty = Math.min(product.stock, quantityToAdd);
+      return [...prev, { ...product, quantity: initialQty }];
     });
 
     setSearchTerm('');
@@ -642,17 +689,30 @@ const AppContent: React.FC = () => {
 
       <main className="flex-1 overflow-y-auto p-4 pb-32">
         <div className="max-w-7xl mx-auto space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center gap-2 flex-wrap">
                 <h2 className="text-2xl font-black text-white">
                     Hola, <span className="text-fuchsia-500">{currentUser?.username}</span>
                 </h2>
-                <button 
-                    onClick={() => setCashClosureOpen(true)} 
-                    className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl text-sm font-black transition-all border animate-blink-red-green hover:scale-105 active:scale-95"
-                    id="btn-cierre-caja"
-                >
-                    <Calculator size={20} className="animate-pulse" /> CIERRE DE CAJA
-                </button>
+                <div className="flex items-center gap-2.5">
+                    <button 
+                        onClick={() => setIsHelpOpen(true)}
+                        className="flex items-center gap-2 px-4 py-3.5 rounded-2xl text-xs font-bold transition-all border bg-zinc-900 hover:bg-zinc-800 text-cyan-400 hover:text-white border-zinc-800 hover:border-cyan-500/50 shadow-sm active:scale-95 cursor-pointer"
+                        title="Centro de Ayuda y Guía Rápida"
+                        id="btn-ayuda-usuario"
+                    >
+                        <HelpCircle size={18} />
+                        <span className="uppercase tracking-wider hidden sm:inline">Ayuda</span>
+                    </button>
+                    <UserHelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+
+                    <button 
+                        onClick={() => setCashClosureOpen(true)} 
+                        className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl text-sm font-black transition-all border animate-blink-red-green hover:scale-105 active:scale-95 cursor-pointer"
+                        id="btn-cierre-caja"
+                    >
+                        <Calculator size={20} className="animate-pulse" /> CIERRE DE CAJA
+                    </button>
+                </div>
             </div>
 
             <div className="space-y-2">
@@ -665,7 +725,7 @@ const AppContent: React.FC = () => {
                   type="text"
                   inputMode={isVirtualKeyboardActive ? "text" : "none"}
                   autoComplete="off" 
-                  placeholder="Escaneá o escribí tu búsqueda..."
+                  placeholder="Escaneá o escribí tu búsqueda (ej. 3*77900... para multi-cantidad)"
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-white focus:border-fuchsia-500 outline-none shadow-lg shadow-black/20 text-lg transition-all focus:ring-2 focus:ring-fuchsia-500/20"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -676,50 +736,72 @@ const AppContent: React.FC = () => {
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && searchTerm.trim()) {
-                      const term = searchTerm.trim().toLowerCase();
+                      const rawTerm = searchTerm.trim();
+                      let qty = 1;
+                      let term = rawTerm.toLowerCase();
+
+                      // Soporte de multiplicación: ej. "3*7790070411516" o "5*coca"
+                      const multMatch = rawTerm.match(/^(\d+)\*(.+)$/);
+                      if (multMatch) {
+                        qty = parseInt(multMatch[1], 10) || 1;
+                        term = multMatch[2].trim().toLowerCase();
+                      }
+
                       const exactMatch = products.find(p => p.barcode && p.barcode.toLowerCase() === term) ||
+                                         products.find(p => p.name.toLowerCase() === term) ||
                                          (filteredProducts.length === 1 ? filteredProducts[0] : null);
+
                       if (exactMatch) {
-                        addToCart(exactMatch);
+                        addToCart(exactMatch, qty);
                       }
                     }
                   }}
                 />
               </div>
 
-              {/* Botón de control de teclado por debajo de la caja de búsqueda */}
-              <div className="flex items-center justify-between gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!isVirtualKeyboardActive) {
-                      setIsVirtualKeyboardActive(true);
-                      setTimeout(() => {
-                        searchInputRef.current?.focus();
-                      }, 50);
-                    } else {
-                      setIsVirtualKeyboardActive(false);
-                      searchInputRef.current?.blur();
-                    }
-                  }}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-sm active:scale-95 ${
-                    isVirtualKeyboardActive
-                      ? 'bg-fuchsia-600 border-fuchsia-500 text-white shadow-fuchsia-900/30'
-                      : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-800 hover:border-zinc-700'
-                  }`}
-                >
-                  {isVirtualKeyboardActive ? (
-                    <>
-                      <KeyboardOff size={16} />
-                      <span>Ocultar Teclado (Modo Escáner)</span>
-                    </>
-                  ) : (
-                    <>
-                      <Keyboard size={16} />
-                      <span>Abrir Teclado Táctil</span>
-                    </>
-                  )}
-                </button>
+              {/* Botón de control de teclado y atajos de teclado rápidos */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isVirtualKeyboardActive) {
+                        setIsVirtualKeyboardActive(true);
+                        setTimeout(() => {
+                          searchInputRef.current?.focus();
+                        }, 50);
+                      } else {
+                        setIsVirtualKeyboardActive(false);
+                        searchInputRef.current?.blur();
+                      }
+                    }}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm active:scale-95 ${
+                      isVirtualKeyboardActive
+                        ? 'bg-fuchsia-600 border-fuchsia-500 text-white shadow-fuchsia-900/30'
+                        : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-800 hover:border-zinc-700'
+                    }`}
+                  >
+                    {isVirtualKeyboardActive ? (
+                      <>
+                        <KeyboardOff size={15} />
+                        <span>Ocultar Teclado (Modo Escáner)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Keyboard size={15} />
+                        <span>Abrir Teclado Táctil</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Hotkey Chips */}
+                  <div className="hidden md:flex items-center gap-1.5 text-[10px] text-zinc-400 font-mono">
+                    <span className="bg-zinc-900 border border-zinc-800 px-2 py-1 rounded-md text-zinc-300 font-bold">[F2] Buscar</span>
+                    <span className="bg-zinc-900 border border-zinc-800 px-2 py-1 rounded-md text-emerald-400 font-bold">[F4] Cobrar</span>
+                    <span className="bg-zinc-900 border border-zinc-800 px-2 py-1 rounded-md text-fuchsia-400 font-bold">[F8] Escáner</span>
+                    <span className="bg-zinc-900 border border-zinc-800 px-2 py-1 rounded-md text-zinc-300 font-bold">[F3] Carrito</span>
+                  </div>
+                </div>
 
                 {searchTerm && (
                   <button
