@@ -198,13 +198,19 @@ class SyncQueueManager {
 
         let success = false;
         if (item.action === 'delete') {
-          success = await supabaseProductsService.deleteProduct(item.productId);
+          if (item.productId && item.productId.trim()) {
+            success = await supabaseProductsService.deleteProduct(item.productId);
+          } else {
+            success = true; // Invalid ID, drop item
+          }
         } else {
-          const fullProd = await db.products.get(item.productId);
-          if (fullProd) {
+          const fullProd = item.productId ? await db.products.get(item.productId) : null;
+          if (fullProd && fullProd.id) {
             success = await supabaseProductsService.saveProduct(fullProd);
-          } else if (item.productData && item.productData.id) {
+          } else if (item.productId && item.productData) {
             success = await supabaseProductsService.updateProduct(item.productId, item.productData);
+          } else {
+            success = true; // Drop unresolvable change
           }
         }
 
@@ -232,10 +238,12 @@ class SyncQueueManager {
           const success = await supabaseSalesService.saveSale(item.sale);
 
           // También actualizar los stocks resultantes de la venta en Supabase
-          for (const cartItem of item.sale.items) {
-            const prod = await db.products.get(cartItem.id);
-            if (prod) {
-              await supabaseProductsService.updateProduct(prod.id, { stock: prod.stock });
+          for (const cartItem of (item.sale.items || [])) {
+            if (cartItem && cartItem.id) {
+              const prod = await db.products.get(cartItem.id);
+              if (prod && prod.id && String(prod.id).trim()) {
+                await supabaseProductsService.updateProduct(prod.id, { stock: prod.stock });
+              }
             }
           }
 
