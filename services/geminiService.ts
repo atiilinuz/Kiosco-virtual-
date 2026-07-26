@@ -1,17 +1,19 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { PRODUCTS } from "../constants";
+import { Product } from "../types";
 
-// Correctly initialize GoogleGenAI using the process.env.API_KEY environment variable.
+// Initialize GoogleGenAI using process.env.API_KEY environment variable.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export async function getSmartRecommendations(userInput: string) {
+export async function getSmartRecommendations(userInput: string, activeProducts?: Product[]) {
   try {
+    const catalog = (activeProducts && activeProducts.length > 0) ? activeProducts : PRODUCTS;
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `El usuario está buscando algo en un kiosco. Su solicitud es: "${userInput}".
-      Basado en el siguiente catálogo: ${JSON.stringify(PRODUCTS.map(p => ({ id: p.id, name: p.name, category: p.category })))}
-      Por favor, recomienda de 1 a 3 productos que mejor se ajusten a lo que pide o a su estado de ánimo. 
+      model: "gemini-2.5-flash",
+      contents: `El usuario está buscando algo en un kiosco o tienda. Su solicitud es: "${userInput}".
+      Basado en el siguiente catálogo activo: ${JSON.stringify(catalog.map(p => ({ id: p.id, name: p.name, category: p.category, price: p.price })))}
+      Por favor, recomienda de 1 a 3 productos que mejor se ajusten a lo que pide o a su antojo/estado de ánimo. 
       Si no hay coincidencia directa, sugiere algo relacionado.`,
       config: {
         responseMimeType: "application/json",
@@ -25,7 +27,7 @@ export async function getSmartRecommendations(userInput: string) {
             },
             reasoning: {
               type: Type.STRING,
-              description: "Explicación amigable de por qué recomiendas esto"
+              description: "Explicación amigable de por qué recomiendas estos productos"
             }
           },
           required: ["products", "reasoning"]
@@ -33,7 +35,6 @@ export async function getSmartRecommendations(userInput: string) {
       }
     });
 
-    // Access text property directly and ensure it is trimmed before parsing.
     const jsonStr = response.text?.trim() || "{}";
     return JSON.parse(jsonStr);
   } catch (error) {
@@ -41,3 +42,4 @@ export async function getSmartRecommendations(userInput: string) {
     return null;
   }
 }
+

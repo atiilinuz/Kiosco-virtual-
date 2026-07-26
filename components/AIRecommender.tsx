@@ -4,28 +4,36 @@ import { Sparkles, Loader2, ArrowRight } from 'lucide-react';
 import { getSmartRecommendations } from '../services/geminiService';
 import { Product, AIRecommendation } from '../types';
 import { PRODUCTS } from '../constants';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db';
 
 interface AIRecommenderProps {
   onAddToCart: (product: Product) => void;
+  products?: Product[];
 }
 
-const AIRecommender: React.FC<AIRecommenderProps> = ({ onAddToCart }) => {
+const AIRecommender: React.FC<AIRecommenderProps> = ({ onAddToCart, products: passedProducts }) => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [recommendation, setRecommendation] = useState<AIRecommendation | null>(null);
+
+  const dbProducts = useLiveQuery(() => db.products.toArray()) || [];
+  const activeProducts = (passedProducts && passedProducts.length > 0) 
+    ? passedProducts 
+    : (dbProducts.length > 0 ? dbProducts : PRODUCTS);
 
   const handleAsk = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
     
     setLoading(true);
-    const result = await getSmartRecommendations(input);
+    const result = await getSmartRecommendations(input, activeProducts);
     setRecommendation(result);
     setLoading(false);
   };
 
   const recommendedProducts = recommendation 
-    ? PRODUCTS.filter(p => recommendation.products.includes(p.id))
+    ? activeProducts.filter(p => recommendation.products.includes(p.id))
     : [];
 
   return (
@@ -91,3 +99,4 @@ const AIRecommender: React.FC<AIRecommenderProps> = ({ onAddToCart }) => {
 };
 
 export default AIRecommender;
+
