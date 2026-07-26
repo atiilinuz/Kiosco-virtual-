@@ -70,8 +70,27 @@ const SERVICES = [
 ];
 
 const AppContent: React.FC = () => {
-  const [role, setRole] = useState<UserRole>('guest');
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
+    try {
+      const saved = localStorage.getItem('kiosco_current_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.role === 'user') {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Error restaurando sesión:', e);
+    }
+    return null;
+  });
+
+  const [role, setRole] = useState<UserRole>(() => {
+    if (currentUser) {
+      return currentUser.role === 'admin' ? 'admin' : 'user';
+    }
+    return 'guest';
+  });
   const [isLoadingDB, setIsLoadingDB] = useState(true);
 
   // Estados locales de datos (reactivos con Dexie)
@@ -366,9 +385,18 @@ const AppContent: React.FC = () => {
   }, [products, searchTerm, selectedCategory]);
 
   const handleLogin = useCallback(async (user: AppUser, device: string) => {
-    setRole(user.role === 'admin' ? 'admin' : 'user');
+    const userRole = user.role === 'admin' ? 'admin' : 'user';
+    setRole(userRole);
     setCurrentUser(user);
     
+    // Si es un usuario regular, persistimos la sesión para que no se cierre al cambiar de app o recargar.
+    // Si es administrador, aseguramos que no quede guardado en storage.
+    if (userRole === 'user') {
+      localStorage.setItem('kiosco_current_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('kiosco_current_user');
+    }
+
     const newLog: LoginLog = {
         id: Date.now().toString(),
         userId: user.id,
@@ -383,22 +411,30 @@ const AppContent: React.FC = () => {
     setRole('guest');
     setCurrentUser(null);
     setCart([]);
+    localStorage.removeItem('kiosco_current_user');
   }, []);
 
-  // Logout admin on visibility change (switching apps)
+  // Cierre de sesión automático EXCLUSIVO para el Administrador al cambiar de aplicación o pantalla
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        if (currentUser && currentUser.role === 'admin') {
-          handleLogout();
-        }
+    const handleSwitchApp = () => {
+      // Si el usuario actual es administrador, cerramos la sesión al salir o cambiar de app
+      if (currentUser && currentUser.role === 'admin') {
+        handleLogout();
       }
     };
-    
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        handleSwitchApp();
+      }
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handleSwitchApp);
     
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handleSwitchApp);
     };
   }, [currentUser, handleLogout]);
 

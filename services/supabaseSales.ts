@@ -6,27 +6,31 @@ export function toSupabaseSaleRow(s: Sale) {
   return {
     id: s.id,
     user_id: s.userId || 'system',
-    user_name: s.userName || 'Usuario',
+    user_name: s.username || s.userName || 'Usuario',
     items: s.items || [],
     total: Number(s.total) || 0,
     payment_method: s.paymentMethod || 'efectivo',
     paid_amount: Number(s.paidAmount) || 0,
     change: Number(s.change) || 0,
-    created_at: s.createdAt || new Date().toISOString()
+    created_at: s.timestamp || s.createdAt || new Date().toISOString()
   };
 }
 
 export function fromSupabaseSaleRow(row: any): Sale {
+  const ts = String(row.created_at || row.createdAt || row.timestamp || new Date().toISOString());
+  const uname = String(row.user_name || row.userName || row.username || 'Usuario');
   return {
     id: String(row.id),
     userId: String(row.user_id || row.userId || 'system'),
-    userName: String(row.user_name || row.userName || 'Usuario'),
+    username: uname,
+    userName: uname,
     items: Array.isArray(row.items) ? row.items : (typeof row.items === 'string' ? JSON.parse(row.items) : []),
     total: Number(row.total) || 0,
     paymentMethod: (row.payment_method || row.paymentMethod || 'efectivo') as 'efectivo' | 'transferencia',
     paidAmount: Number(row.paid_amount || row.paidAmount || 0),
     change: Number(row.change) || 0,
-    createdAt: String(row.created_at || row.createdAt || new Date().toISOString())
+    timestamp: ts,
+    createdAt: ts
   };
 }
 

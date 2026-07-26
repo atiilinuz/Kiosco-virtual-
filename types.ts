@@ -44,10 +44,14 @@ export interface Sale {
   id: string;
   userId: string;
   username: string;
+  userName?: string;
   items: CartItem[];
   total: number;
   paymentMethod: string;
   timestamp: string;
+  createdAt?: string;
+  paidAmount?: number;
+  change?: number;
 }
 
 export interface Category {
