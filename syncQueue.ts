@@ -1,8 +1,9 @@
 import Dexie, { Table } from 'dexie';
 import { Sale, Product } from './types';
 import { db } from './db';
-import { supabaseSalesService } from './services/supabaseSales';
-import { supabaseProductsService } from './services/supabaseProducts';
+import { supabase } from './services/supabaseClient';
+import { supabaseSalesService, fromSupabaseSaleRow } from './services/supabaseSales';
+import { supabaseProductsService, fromSupabaseRow } from './services/supabaseProducts';
 
 export interface PendingSale {
   id?: number;
@@ -21,6 +22,24 @@ export interface PendingProductUpdate {
   createdAt: string;
   attempts: number;
   status: 'pending' | 'failed' | 'syncing';
+}
+
+export interface IntegrityCheckResult {
+  success: boolean;
+  message: string;
+  productsSummary: {
+    localTotal: number;
+    remoteTotal: number;
+    pushedToRemote: number;
+    pulledFromRemote: number;
+  };
+  salesSummary: {
+    localTotal: number;
+    remoteTotal: number;
+    pushedToRemote: number;
+    pulledFromRemote: number;
+  };
+  pendingQueueProcessed: number;
 }
 
 class OfflineSyncDatabase extends Dexie {
@@ -261,6 +280,130 @@ class SyncQueueManager {
       }
     } catch (e) {
       console.error('[SyncQueue] Error sincronizando fallback:', e);
+    }
+  }
+
+  // Validar integridad entre Dexie local y Supabase remote
+  async validateIntegrityWithSupabase(): Promise<IntegrityCheckResult> {
+    if (!navigator.onLine) {
+      return {
+        success: false,
+        message: 'Sin conexión a Internet. Conéctese para validar integridad con Supabase.',
+        productsSummary: { localTotal: 0, remoteTotal: 0, pushedToRemote: 0, pulledFromRemote: 0 },
+        salesSummary: { localTotal: 0, remoteTotal: 0, pushedToRemote: 0, pulledFromRemote: 0 },
+        pendingQueueProcessed: 0
+      };
+    }
+
+    try {
+      this.isProcessing = true;
+      this.notify();
+
+      // 1. Procesar elementos pendientes en la cola primero
+      const pendingBefore = await this.getPendingCount();
+      await this.processQueue();
+
+      // 2. Obtener productos y ventas locales
+      const localProducts = await db.products.toArray();
+      const localSales = await db.sales.toArray();
+
+      // 3. Obtener productos y ventas de Supabase
+      const { data: remoteProductsData, error: prodErr } = await supabase.from('products').select('*');
+      if (prodErr) throw new Error(`Error leyendo productos de Supabase: ${prodErr.message}`);
+
+      const { data: remoteSalesData, error: salesErr } = await supabase.from('sales').select('*');
+      if (salesErr) throw new Error(`Error leyendo ventas de Supabase: ${salesErr.message}`);
+
+      const remoteProducts = (remoteProductsData || []).map(fromSupabaseRow);
+      const remoteSales = (remoteSalesData || []).map(fromSupabaseSaleRow);
+
+      const localProdMap = new Map(localProducts.map(p => [p.id, p]));
+      const remoteProdMap = new Map(remoteProducts.map(p => [p.id, p]));
+
+      let pushedProducts = 0;
+      let pulledProducts = 0;
+
+      // Reconciliar Productos: Local -> Remote
+      for (const localP of localProducts) {
+        if (!remoteProdMap.has(localP.id)) {
+          // Registro faltante en Supabase -> Subir
+          await supabaseProductsService.saveProduct(localP);
+          pushedProducts++;
+        } else {
+          // Si difiere en stock o precio, forzar actualización con el estado local
+          const remoteP = remoteProdMap.get(localP.id)!;
+          if (remoteP.stock !== localP.stock || remoteP.price !== localP.price || remoteP.name !== localP.name) {
+            await supabaseProductsService.saveProduct(localP);
+            pushedProducts++;
+          }
+        }
+      }
+
+      // Reconciliar Productos: Remote -> Local
+      for (const remoteP of remoteProducts) {
+        if (!localProdMap.has(remoteP.id)) {
+          // Registro huérfano localmente -> Descargar
+          await db.products.put(remoteP);
+          pulledProducts++;
+        }
+      }
+
+      // Reconciliar Ventas: Local <-> Remote
+      const localSaleMap = new Map(localSales.map(s => [s.id, s]));
+      const remoteSaleMap = new Map(remoteSales.map(s => [s.id, s]));
+
+      let pushedSales = 0;
+      let pulledSales = 0;
+
+      // Local -> Remote
+      for (const localS of localSales) {
+        if (!remoteSaleMap.has(localS.id)) {
+          await supabaseSalesService.saveSale(localS);
+          pushedSales++;
+        }
+      }
+
+      // Remote -> Local
+      for (const remoteS of remoteSales) {
+        if (!localSaleMap.has(remoteS.id)) {
+          await db.sales.put(remoteS);
+          pulledSales++;
+        }
+      }
+
+      const finalLocalProducts = await db.products.count();
+      const finalLocalSales = await db.sales.count();
+
+      return {
+        success: true,
+        message: `Validación de integridad completada con éxito. Se sincronizaron ${pushedProducts + pulledProducts} productos y ${pushedSales + pulledSales} ventas.`,
+        productsSummary: {
+          localTotal: finalLocalProducts,
+          remoteTotal: remoteProducts.length + pushedProducts,
+          pushedToRemote: pushedProducts,
+          pulledFromRemote: pulledProducts
+        },
+        salesSummary: {
+          localTotal: finalLocalSales,
+          remoteTotal: remoteSales.length + pushedSales,
+          pushedToRemote: pushedSales,
+          pulledFromRemote: pulledSales
+        },
+        pendingQueueProcessed: pendingBefore
+      };
+
+    } catch (error: any) {
+      console.error('[SyncQueue] Error en validación de integridad:', error);
+      return {
+        success: false,
+        message: `Error al validar integridad: ${error.message || String(error)}`,
+        productsSummary: { localTotal: 0, remoteTotal: 0, pushedToRemote: 0, pulledFromRemote: 0 },
+        salesSummary: { localTotal: 0, remoteTotal: 0, pushedToRemote: 0, pulledFromRemote: 0 },
+        pendingQueueProcessed: 0
+      };
+    } finally {
+      this.isProcessing = false;
+      this.notify();
     }
   }
 }

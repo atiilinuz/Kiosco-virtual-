@@ -22,6 +22,7 @@ import { Product, Supplier, AppUser, LoginLog, Sale, ProductLog, ErrorLog } from
 import { CATEGORIES } from '../constants';
 import { formatCurrency, compressImage, hashPassword } from '../utils';
 import { dbService } from '../db';
+import { syncQueue, IntegrityCheckResult } from '../syncQueue';
 import { 
   ResponsiveContainer, 
   AreaChart, 
@@ -191,6 +192,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newUserForm, setNewUserForm] = useState({
     username: '', password: '', role: 'user' as 'admin' | 'user'
   });
+
+  // --- Estado e Integridad con Supabase ---
+  const [isValidatingIntegrity, setIsValidatingIntegrity] = useState(false);
+  const [integrityResult, setIntegrityResult] = useState<IntegrityCheckResult | null>(null);
+
+  const handleValidateIntegrity = async () => {
+    setIsValidatingIntegrity(true);
+    setIntegrityResult(null);
+    try {
+      const result = await syncQueue.validateIntegrityWithSupabase();
+      setIntegrityResult(result);
+    } catch (err: any) {
+      setIntegrityResult({
+        success: false,
+        message: err?.message || 'Error inesperado al validar la integridad.',
+        productsSummary: { localTotal: 0, remoteTotal: 0, pushedToRemote: 0, pulledFromRemote: 0 },
+        salesSummary: { localTotal: 0, remoteTotal: 0, pushedToRemote: 0, pulledFromRemote: 0 },
+        pendingQueueProcessed: 0
+      });
+    } finally {
+      setIsValidatingIntegrity(false);
+    }
+  };
 
   // --- Handlers para Backup y Restore ---
   const handleBackup = async () => {
@@ -1482,6 +1506,91 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <p className="text-xs text-zinc-500 mt-1">Cuentas con acceso</p>
                 </div>
               </div>
+            </div>
+
+            {/* Supabase Integrity & Synchronization Panel */}
+            <div className="bg-gradient-to-br from-zinc-900 via-zinc-900 to-emerald-950/30 border border-emerald-500/20 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <Zap size={22} />
+                    </div>
+                    <h3 className="text-xl font-black text-white">
+                      Validación de Integridad Local (Dexie) vs Supabase
+                    </h3>
+                  </div>
+                  <p className="text-zinc-400 text-sm max-w-2xl">
+                    Compara el catálogo de productos y el registro de ventas almacenados en tu dispositivo local con la base de datos en la nube (Supabase). Detecta y resuelve automáticamente registros faltantes, huérfanos o desincronizados.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleValidateIntegrity}
+                  disabled={isValidatingIntegrity}
+                  className={`flex items-center justify-center gap-3 py-4 px-8 rounded-2xl font-black text-sm uppercase tracking-wider transition-all duration-300 shadow-xl shrink-0 cursor-pointer ${
+                    isValidatingIntegrity
+                      ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
+                      : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 border border-emerald-400 hover:scale-[1.02]'
+                  }`}
+                >
+                  <RefreshCw size={18} className={isValidatingIntegrity ? 'animate-spin' : ''} />
+                  {isValidatingIntegrity ? 'Validando Integridad...' : 'Forzar Validación de Integridad'}
+                </button>
+              </div>
+
+              {/* Integrity Result Card */}
+              {integrityResult && (
+                <div className={`mt-6 p-6 rounded-2xl border ${
+                  integrityResult.success 
+                    ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
+                    : 'bg-red-950/20 border-red-500/30 text-red-300'
+                } animate-fade-in`}>
+                  <div className="flex items-start gap-3 mb-4">
+                    {integrityResult.success ? (
+                      <CheckCircle2 size={24} className="text-emerald-400 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertCircle size={24} className="text-red-400 shrink-0 mt-0.5" />
+                    )}
+                    <div>
+                      <h4 className="font-bold text-base text-white">{integrityResult.message}</h4>
+                      <p className="text-xs text-zinc-400 mt-1">
+                        Cola de pendientes procesada previa: <span className="font-mono text-emerald-400">{integrityResult.pendingQueueProcessed} ítems</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {integrityResult.success && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-500/20">
+                      {/* Products Summary */}
+                      <div className="bg-black/40 p-4 rounded-xl border border-zinc-800">
+                        <div className="flex items-center gap-2 mb-2 font-bold text-xs uppercase tracking-wider text-emerald-400">
+                          <Package size={16} /> Resumen de Productos
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div><span className="text-zinc-500">Total Local:</span> <strong className="text-white">{integrityResult.productsSummary.localTotal}</strong></div>
+                          <div><span className="text-zinc-500">Total Supabase:</span> <strong className="text-white">{integrityResult.productsSummary.remoteTotal}</strong></div>
+                          <div><span className="text-zinc-500">Subidos a Nube:</span> <strong className="text-emerald-400">+{integrityResult.productsSummary.pushedToRemote}</strong></div>
+                          <div><span className="text-zinc-500">Descargados:</span> <strong className="text-blue-400">+{integrityResult.productsSummary.pulledFromRemote}</strong></div>
+                        </div>
+                      </div>
+
+                      {/* Sales Summary */}
+                      <div className="bg-black/40 p-4 rounded-xl border border-zinc-800">
+                        <div className="flex items-center gap-2 mb-2 font-bold text-xs uppercase tracking-wider text-fuchsia-400">
+                          <ShoppingBag size={16} /> Resumen de Ventas
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div><span className="text-zinc-500">Total Local:</span> <strong className="text-white">{integrityResult.salesSummary.localTotal}</strong></div>
+                          <div><span className="text-zinc-500">Total Supabase:</span> <strong className="text-white">{integrityResult.salesSummary.remoteTotal}</strong></div>
+                          <div><span className="text-zinc-500">Subidas a Nube:</span> <strong className="text-fuchsia-400">+{integrityResult.salesSummary.pushedToRemote}</strong></div>
+                          <div><span className="text-zinc-500">Descargadas:</span> <strong className="text-blue-400">+{integrityResult.salesSummary.pulledFromRemote}</strong></div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Quick Actions Card Panel */}
