@@ -10,6 +10,8 @@ import ErrorBoundary from './components/ErrorBoundary';
 import UserHelpModal from './components/UserHelpModal';
 import { Product, CartItem, Supplier, AppUser, LoginLog, Sale } from './types';
 import { db, initDB, dbService, auth, handleFirestoreError, OperationType } from './db';
+import { supabaseProductsService } from './services/supabaseProducts';
+import { supabaseSalesService } from './services/supabaseSales';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { playAddSound, playSuccessSound } from './audio';
 
@@ -281,10 +283,21 @@ const AppContent: React.FC = () => {
     return true;
   };
 
-  // Inicializar DB
+  // Inicializar DB y sincronizar con Supabase
   useEffect(() => {
-    initDB();
-    setIsLoadingDB(false);
+    const initializeAndSync = async () => {
+      await initDB();
+      setIsLoadingDB(false);
+    };
+    initializeAndSync();
+
+    const unsubscribeProducts = supabaseProductsService.subscribeToProducts();
+    const unsubscribeSales = supabaseSalesService.subscribeToSales();
+
+    return () => {
+      unsubscribeProducts();
+      unsubscribeSales();
+    };
   }, []);
 
   // Sync Cart

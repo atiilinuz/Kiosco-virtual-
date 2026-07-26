@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.34.0",
+    "@supabase/supabase-js": "^2.110.8",
     "dexie": "^4.2.0",
     "dexie-react-hooks": "^4.2.0",
     "firebase": "^12.15.0",

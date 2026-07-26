@@ -2,6 +2,9 @@ import Dexie, { Table } from 'dexie';
 import { Product, Sale, AppUser, Supplier, LoginLog, ProductLog, ErrorLog } from './types';
 import { PRODUCTS } from './constants';
 import { hashPassword } from './utils';
+import { supabaseProductsService } from './services/supabaseProducts';
+import { supabaseSalesService } from './services/supabaseSales';
+import { syncQueue } from './syncQueue';
 
 export enum OperationType {
   CREATE = 'create',
@@ -64,6 +67,10 @@ export const initDB = async () => {
       console.log('Default products seeded successfully.');
     }
 
+    // Attempt Supabase products and sales synchronization
+    await supabaseProductsService.syncProductsFromSupabase();
+    await supabaseSalesService.syncSalesFromSupabase();
+
     // Check users
     const adminUserExists = await db.users.where('username').equals('admin').first();
     if (!adminUserExists) {
@@ -101,15 +108,33 @@ export const dbService = {
   // --- Products ---
   async addProduct(product: Product) {
     await db.products.put(product);
+    const ok = await supabaseProductsService.saveProduct(product);
+    if (!ok) {
+      await syncQueue.enqueueProductChange(product.id, product, 'upsert');
+    }
   },
   async updateProduct(id: string, product: Partial<Product>) {
     await db.products.update(id, product);
+    const ok = await supabaseProductsService.updateProduct(id, product);
+    if (!ok) {
+      await syncQueue.enqueueProductChange(id, product, 'upsert');
+    }
   },
   async deleteProduct(id: string) {
     await db.products.delete(id);
+    const ok = await supabaseProductsService.deleteProduct(id);
+    if (!ok) {
+      await syncQueue.enqueueProductChange(id, {}, 'delete');
+    }
   },
   async bulkAddProducts(products: Product[]) {
     await db.products.bulkPut(products);
+    const ok = await supabaseProductsService.bulkSaveProducts(products);
+    if (!ok) {
+      for (const p of products) {
+        await syncQueue.enqueueProductChange(p.id, p, 'upsert');
+      }
+    }
   },
 
   // --- Suppliers ---
@@ -142,13 +167,14 @@ export const dbService = {
   // --- Sales & Transactions ---
   async addSale(sale: Sale) {
     await db.sales.put(sale);
+    await syncQueue.enqueueSale(sale);
   },
   async executeSaleTransaction(newSale: Sale, deductStock = true) {
-    // 1. Registrar la venta localmente de inmediato
+    // 1. Registrar la venta localmente de inmediato en Dexie
     await db.sales.put(newSale);
 
     if (deductStock) {
-      // 2. Descontar stock de cada ítem de manera offline-resiliente
+      // 2. Descontar stock de cada ítem localmente
       for (const item of newSale.items) {
         const prod = await db.products.get(item.id);
         if (prod) {
@@ -157,6 +183,9 @@ export const dbService = {
         }
       }
     }
+
+    // 3. Encolar / Sincronizar venta e inventarios con Supabase
+    await syncQueue.enqueueSale(newSale);
   },
   async restoreDatabase(data: any) {
     if (data.products && Array.isArray(data.products)) {

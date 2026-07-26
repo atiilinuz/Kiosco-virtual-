@@ -1,6 +1,8 @@
 import Dexie, { Table } from 'dexie';
-import { Sale } from './types';
-import { dbService } from './db';
+import { Sale, Product } from './types';
+import { db } from './db';
+import { supabaseSalesService } from './services/supabaseSales';
+import { supabaseProductsService } from './services/supabaseProducts';
 
 export interface PendingSale {
   id?: number;
@@ -11,13 +13,25 @@ export interface PendingSale {
   lastError?: string;
 }
 
+export interface PendingProductUpdate {
+  id?: number;
+  productId: string;
+  productData: Partial<Product>;
+  action: 'upsert' | 'delete';
+  createdAt: string;
+  attempts: number;
+  status: 'pending' | 'failed' | 'syncing';
+}
+
 class OfflineSyncDatabase extends Dexie {
   pendingSales!: Table<PendingSale>;
+  pendingProducts!: Table<PendingProductUpdate>;
 
   constructor() {
-    super('KioscoLasChicasOfflineDB');
+    super('KioscoLasChicasOfflineDB_v2');
     this.version(1).stores({
-      pendingSales: '++id, createdAt, attempts, status'
+      pendingSales: '++id, createdAt, attempts, status',
+      pendingProducts: '++id, productId, action, createdAt, status'
     });
   }
 }
@@ -29,19 +43,19 @@ class SyncQueueManager {
   private listeners: (() => void)[] = [];
 
   constructor() {
-    // Escuchar el evento de conexión restaurada para iniciar sincronización
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
-        console.log('[SyncQueue] Conexión online detectada. Iniciando sincronización...');
+        console.log('[SyncQueue] Conexión online restablecida. Sincronizando con Supabase...');
         this.processQueue();
+        this.syncAllFromRemote();
       });
 
-      // Intervalo de seguridad por si falla el evento nativo
+      // Intervalo periódico de sincronización automática (cada 15 segundos)
       setInterval(() => {
         if (navigator.onLine) {
           this.processQueue();
         }
-      }, 20000);
+      }, 15000);
     }
   }
 
@@ -62,39 +76,73 @@ class SyncQueueManager {
 
   async getPendingCount(): Promise<number> {
     try {
-      return await syncDb.pendingSales.count();
+      const salesCount = await syncDb.pendingSales.count();
+      const productsCount = await syncDb.pendingProducts.count();
+      return salesCount + productsCount;
     } catch (e) {
-      console.error('[SyncQueue] Error al contar ventas pendientes:', e);
+      console.error('[SyncQueue] Error al contar elementos pendientes:', e);
       return 0;
+    }
+  }
+
+  // Descarga e integra cambios bidireccionales desde Supabase
+  async syncAllFromRemote() {
+    if (!navigator.onLine) return;
+    try {
+      await Promise.all([
+        supabaseProductsService.syncProductsFromSupabase(),
+        supabaseSalesService.syncSalesFromSupabase()
+      ]);
+      this.notify();
+    } catch (err) {
+      console.error('[SyncQueue] Error descargando cambios de Supabase:', err);
     }
   }
 
   async enqueueSale(sale: Sale): Promise<void> {
     try {
-      // Registrar en IndexedDB
       await syncDb.pendingSales.add({
         sale,
         createdAt: new Date().toISOString(),
         attempts: 0,
         status: 'pending'
       });
-      console.log(`[SyncQueue] Venta encolada localmente: ${sale.id}`);
+      console.log(`[SyncQueue] Venta registrada en cola de sincronización: ${sale.id}`);
       this.notify();
 
-      // Intentar procesar de inmediato si estamos online
       if (navigator.onLine) {
         this.processQueue();
       }
     } catch (error) {
       console.error('[SyncQueue] Error enqueuing sale:', error);
-      // Intento de fallback desesperado en memoria o local storage
       try {
         const fallbackQueue = JSON.parse(localStorage.getItem('fallback_sync_queue') || '[]');
         fallbackQueue.push(sale);
         localStorage.setItem('fallback_sync_queue', JSON.stringify(fallbackQueue));
       } catch (localErr) {
-        console.error('[SyncQueue] Fallback local storage también falló:', localErr);
+        console.error('[SyncQueue] Fallback local storage falló:', localErr);
       }
+    }
+  }
+
+  async enqueueProductChange(productId: string, productData: Partial<Product>, action: 'upsert' | 'delete'): Promise<void> {
+    try {
+      await syncDb.pendingProducts.add({
+        productId,
+        productData,
+        action,
+        createdAt: new Date().toISOString(),
+        attempts: 0,
+        status: 'pending'
+      });
+      console.log(`[SyncQueue] Cambio de producto encolado: ${productId} (${action})`);
+      this.notify();
+
+      if (navigator.onLine) {
+        this.processQueue();
+      }
+    } catch (error) {
+      console.error('[SyncQueue] Error enqueuing product update:', error);
     }
   }
 
@@ -104,79 +152,101 @@ class SyncQueueManager {
     }
 
     if (!navigator.onLine) {
-      console.log('[SyncQueue] Dispositivo offline. Sincronización en espera.');
+      console.log('[SyncQueue] Estado offline. Cola pausada.');
       return;
     }
 
-    const count = await this.getPendingCount();
-    if (count === 0) {
+    const pendingSalesCount = await syncDb.pendingSales.count();
+    const pendingProductsCount = await syncDb.pendingProducts.count();
+
+    if (pendingSalesCount === 0 && pendingProductsCount === 0) {
       return;
     }
 
     this.isProcessing = true;
     this.notify();
 
-    console.log(`[SyncQueue] Iniciando sincronización de ${count} ventas pendientes...`);
+    console.log(`[SyncQueue] Procesando cola: ${pendingSalesCount} ventas, ${pendingProductsCount} productos...`);
 
     try {
-      // Obtener todas las ventas pendientes
-      const pendingItems = await syncDb.pendingSales
-        .orderBy('id')
-        .toArray();
-
-      for (const item of pendingItems) {
-        if (!navigator.onLine) {
-          console.log('[SyncQueue] Se perdió la conexión durante el procesamiento. Abortando ciclo.');
-          break;
-        }
-
+      // 1. Procesar Cambios de Productos pendientes
+      const pendingProducts = await syncDb.pendingProducts.orderBy('id').toArray();
+      for (const item of pendingProducts) {
+        if (!navigator.onLine) break;
         if (!item.id) continue;
 
-        // Marcar como procesando
-        await syncDb.pendingSales.update(item.id, { status: 'syncing' });
-        this.notify();
+        await syncDb.pendingProducts.update(item.id, { status: 'syncing' });
 
-        try {
-          console.log(`[SyncQueue] Sincronizando venta ${item.sale.id} (Intento #${item.attempts + 1})...`);
-          
-          // Intentar guardar usando el servicio de base de datos (evitando doble descuento de stock)
-          await dbService.executeSaleTransaction(item.sale, false);
-          
-          // Pequeña latencia artificial para que el usuario pueda percibir la sincronización fluida
-          await new Promise(resolve => setTimeout(resolve, 800));
-
-          // Si tiene éxito, remover de la cola
-          await syncDb.pendingSales.delete(item.id);
-          console.log(`[SyncQueue] Venta ${item.sale.id} sincronizada correctamente.`);
-        } catch (err: any) {
-          console.error(`[SyncQueue] Falló sincronización de venta ${item.sale.id}:`, err);
-          
-          const nextAttempts = item.attempts + 1;
-          const errorMessage = err?.message || String(err);
-
-          await syncDb.pendingSales.update(item.id, {
-            attempts: nextAttempts,
-            status: 'failed',
-            lastError: errorMessage
-          });
-
-          // Si es un error de conexión, frenar procesamiento para evitar ciclos inútiles
-          if (!navigator.onLine || errorMessage.includes('offline') || errorMessage.includes('network')) {
-            console.log('[SyncQueue] Error de red detectado. Postergando cola.');
-            break;
+        let success = false;
+        if (item.action === 'delete') {
+          success = await supabaseProductsService.deleteProduct(item.productId);
+        } else {
+          const fullProd = await db.products.get(item.productId);
+          if (fullProd) {
+            success = await supabaseProductsService.saveProduct(fullProd);
+          } else if (item.productData && item.productData.id) {
+            success = await supabaseProductsService.updateProduct(item.productId, item.productData);
           }
         }
-        this.notify();
+
+        if (success) {
+          await syncDb.pendingProducts.delete(item.id);
+          console.log(`[SyncQueue] Producto ${item.productId} sincronizado con Supabase.`);
+        } else {
+          await syncDb.pendingProducts.update(item.id, {
+            attempts: item.attempts + 1,
+            status: 'failed'
+          });
+        }
+      }
+
+      // 2. Procesar Ventas pendientes
+      const pendingSales = await syncDb.pendingSales.orderBy('id').toArray();
+      for (const item of pendingSales) {
+        if (!navigator.onLine) break;
+        if (!item.id) continue;
+
+        await syncDb.pendingSales.update(item.id, { status: 'syncing' });
+
+        try {
+          // Intentar guardar la venta en Supabase
+          const success = await supabaseSalesService.saveSale(item.sale);
+
+          // También actualizar los stocks resultantes de la venta en Supabase
+          for (const cartItem of item.sale.items) {
+            const prod = await db.products.get(cartItem.id);
+            if (prod) {
+              await supabaseProductsService.updateProduct(prod.id, { stock: prod.stock });
+            }
+          }
+
+          if (success) {
+            await syncDb.pendingSales.delete(item.id);
+            console.log(`[SyncQueue] Venta ${item.sale.id} sincronizada en Supabase exitosamente.`);
+          } else {
+            await syncDb.pendingSales.update(item.id, {
+              attempts: item.attempts + 1,
+              status: 'failed',
+              lastError: 'Respuesta sin éxito de Supabase'
+            });
+          }
+        } catch (err: any) {
+          console.error(`[SyncQueue] Error al sincronizar venta ${item.sale.id}:`, err);
+          await syncDb.pendingSales.update(item.id, {
+            attempts: item.attempts + 1,
+            status: 'failed',
+            lastError: err?.message || String(err)
+          });
+        }
       }
     } catch (queueErr) {
-      console.error('[SyncQueue] Error general procesando cola:', queueErr);
+      console.error('[SyncQueue] Error general durante la ejecución de la cola:', queueErr);
     } finally {
       this.isProcessing = false;
       this.notify();
     }
   }
 
-  // Integrar cola del fallback local storage en IndexedDB si existe
   async mergeLocalStorageFallback() {
     try {
       const raw = localStorage.getItem('fallback_sync_queue');
@@ -187,16 +257,13 @@ class SyncQueueManager {
             await this.enqueueSale(sale);
           }
           localStorage.removeItem('fallback_sync_queue');
-          console.log(`[SyncQueue] Sincronizadas ${sales.length} ventas del localStorage fallback.`);
         }
       }
     } catch (e) {
-      console.error('[SyncQueue] Error integrando fallback local storage:', e);
+      console.error('[SyncQueue] Error sincronizando fallback:', e);
     }
   }
 }
 
 export const syncQueue = new SyncQueueManager();
-
-// Iniciar migración de fallback en la carga del script
 syncQueue.mergeLocalStorageFallback();
