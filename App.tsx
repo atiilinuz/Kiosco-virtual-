@@ -70,12 +70,26 @@ const SERVICES = [
 ];
 
 const AppContent: React.FC = () => {
+  const bgTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
     try {
       const saved = localStorage.getItem('kiosco_current_user');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.role === 'user') {
+        if (parsed) {
+          if (parsed.role === 'admin') {
+            const bgTimeStr = localStorage.getItem('kiosco_admin_background_time');
+            if (bgTimeStr) {
+              const bgTime = Number(bgTimeStr);
+              if (!isNaN(bgTime) && Date.now() - bgTime >= 5 * 60 * 1000) {
+                // Pasaron más de 5 minutos en segundo plano: la sesión de admin caduca
+                localStorage.removeItem('kiosco_admin_background_time');
+                localStorage.removeItem('kiosco_current_user');
+                return null;
+              }
+            }
+          }
           return parsed;
         }
       }
@@ -389,12 +403,15 @@ const AppContent: React.FC = () => {
     setRole(userRole);
     setCurrentUser(user);
     
-    // Si es un usuario regular, persistimos la sesión para que no se cierre al cambiar de app o recargar.
-    // Si es administrador, aseguramos que no quede guardado en storage.
-    if (userRole === 'user') {
-      localStorage.setItem('kiosco_current_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('kiosco_current_user');
+    // Guardamos la sesión activa
+    localStorage.setItem('kiosco_current_user', JSON.stringify(user));
+    localStorage.removeItem('kiosco_admin_background_time');
+
+    // Guardar/Actualizar usuario en caché local para permitir acceso sin internet en el futuro
+    try {
+      await dbService.addUser(user);
+    } catch (e) {
+      console.error('[Database] Error caching user locally:', e);
     }
 
     const newLog: LoginLog = {
@@ -412,29 +429,73 @@ const AppContent: React.FC = () => {
     setCurrentUser(null);
     setCart([]);
     localStorage.removeItem('kiosco_current_user');
+    localStorage.removeItem('kiosco_admin_background_time');
   }, []);
 
-  // Cierre de sesión automático EXCLUSIVO para el Administrador al cambiar de aplicación o pantalla
+  // Cierre de sesión automático de Administrador al cambiar de ventana/app si transcurren más de 5 minutos
   useEffect(() => {
-    const handleSwitchApp = () => {
-      // Si el usuario actual es administrador, cerramos la sesión al salir o cambiar de app
+    const FIVE_MINUTES = 5 * 60 * 1000;
+
+    const checkTimeoutAndLogout = () => {
       if (currentUser && currentUser.role === 'admin') {
-        handleLogout();
+        const bgTimeStr = localStorage.getItem('kiosco_admin_background_time');
+        if (bgTimeStr) {
+          const bgTime = Number(bgTimeStr);
+          if (!isNaN(bgTime) && Date.now() - bgTime >= FIVE_MINUTES) {
+            console.log('[Admin Session] 5 minutos transcurridos en segundo plano. Cerrando sesión de admin...');
+            localStorage.removeItem('kiosco_admin_background_time');
+            handleLogout();
+            return true;
+          }
+        }
       }
+      return false;
     };
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        handleSwitchApp();
+      if (currentUser && currentUser.role === 'admin') {
+        if (document.visibilityState === 'hidden') {
+          // Guardar marca de tiempo de cuándo la app pasó a segundo plano
+          const now = Date.now();
+          localStorage.setItem('kiosco_admin_background_time', now.toString());
+
+          if (bgTimeoutRef.current) clearTimeout(bgTimeoutRef.current);
+          bgTimeoutRef.current = setTimeout(() => {
+            console.log('[Admin Session] Alcanzado límite de 5 min en segundo plano.');
+            localStorage.removeItem('kiosco_admin_background_time');
+            handleLogout();
+          }, FIVE_MINUTES);
+        } else if (document.visibilityState === 'visible') {
+          const isExpired = checkTimeoutAndLogout();
+          if (!isExpired) {
+            // Si pasaron menos de 5 min, cancelamos el temporizador y la sesión se mantiene abierta
+            if (bgTimeoutRef.current) {
+              clearTimeout(bgTimeoutRef.current);
+              bgTimeoutRef.current = null;
+            }
+            localStorage.removeItem('kiosco_admin_background_time');
+          }
+        }
+      }
+    };
+
+    const handlePageHide = () => {
+      if (currentUser && currentUser.role === 'admin') {
+        localStorage.setItem('kiosco_admin_background_time', Date.now().toString());
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('pagehide', handleSwitchApp);
-    
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('focus', checkTimeoutAndLogout);
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('pagehide', handleSwitchApp);
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('focus', checkTimeoutAndLogout);
+      if (bgTimeoutRef.current) {
+        clearTimeout(bgTimeoutRef.current);
+      }
     };
   }, [currentUser, handleLogout]);
 

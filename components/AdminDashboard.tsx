@@ -150,14 +150,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   sales = [],
   isOnline = true
 }) => {
-  const [activeTab, setActiveTab] = useState<'stats' | 'inventory' | 'suppliers' | 'users' | 'sync' | 'help' | 'calendar' | 'product-logs' | 'error-logs'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'inventory' | 'suppliers' | 'users' | 'sync' | 'help' | 'calendar' | 'product-logs' | 'error-logs'>(() => {
+    return (localStorage.getItem('kiosco_admin_active_tab') as any) || 'stats';
+  });
   const [editingPendingSale, setEditingPendingSale] = useState<any | null>(null);
 
   const [statsPeriod, setStatsPeriod] = useState<'day' | 'week' | 'month'>('day');
   const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
   const [calendarSelectedDate, setCalendarSelectedDate] = useState<string | null>(null);
-  const [inventorySubTab, setInventorySubTab] = useState<'list' | 'manual' | 'excel' | 'json'>('list');
-  const [userSubTab, setUserSubTab] = useState<'manage' | 'logs'>('manage');
+  const [inventorySubTab, setInventorySubTab] = useState<'list' | 'manual' | 'excel' | 'json'>(() => {
+    return (localStorage.getItem('kiosco_admin_inventory_subtab') as any) || 'list';
+  });
+  const [userSubTab, setUserSubTab] = useState<'manage' | 'logs'>(() => {
+    return (localStorage.getItem('kiosco_admin_user_subtab') as any) || 'manage';
+  });
+
+  // Guardar ubicación de trabajo en localStorage
+  React.useEffect(() => {
+    localStorage.setItem('kiosco_admin_active_tab', activeTab);
+  }, [activeTab]);
+
+  React.useEffect(() => {
+    localStorage.setItem('kiosco_admin_inventory_subtab', inventorySubTab);
+  }, [inventorySubTab]);
+
+  React.useEffect(() => {
+    localStorage.setItem('kiosco_admin_user_subtab', userSubTab);
+  }, [userSubTab]);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');

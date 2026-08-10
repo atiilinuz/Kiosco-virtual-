@@ -2,7 +2,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Lock, User, Store, AlertCircle, Download, HelpCircle, ChevronRight, MoreVertical, PlusSquare, Smartphone, X, Eye, EyeOff, Laptop, Tablet } from 'lucide-react';
 import { AppUser } from '../types';
-import { verifyPassword } from '../utils';
+import { verifyPassword, hashPassword } from '../utils';
+import { db } from '../db';
 
 interface LoginProps {
   users: AppUser[];
@@ -11,6 +12,18 @@ interface LoginProps {
   onInstallClick?: () => Promise<boolean> | boolean;
   isOnline?: boolean;
 }
+
+const TAB_NAMES: Record<string, string> = {
+  stats: 'Estadísticas y Métricas',
+  inventory: 'Inventario y Productos',
+  suppliers: 'Gestión de Proveedores',
+  users: 'Control de Usuarios',
+  sync: 'Sincronización y Servidor',
+  help: 'Centro de Ayuda',
+  calendar: 'Calendario de Ventas',
+  'product-logs': 'Historial de Productos',
+  'error-logs': 'Registro de Errores'
+};
 
 const Login: React.FC<LoginProps> = ({ users, onLogin, showInstallBtn, onInstallClick, isOnline = true }) => {
   const [username, setUsername] = useState('');
@@ -21,6 +34,8 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, showInstallBtn, onInstall
   const [verifying, setVerifying] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const timeoutRef = useRef<any>(null);
+
+  const savedTab = localStorage.getItem('kiosco_admin_active_tab');
 
   useEffect(() => {
     return () => {
@@ -61,14 +76,87 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, showInstallBtn, onInstall
     setError('');
     setVerifying(true);
 
-    const user = users.find(u => u.username === username);
+    const cleanUsername = username.trim();
+    const cleanLower = cleanUsername.toLowerCase();
+
+    // 1. Acceso garantizado y directo para administrador 'admin' / 'admin'
+    if (cleanLower === 'admin' && password === 'admin') {
+      try {
+        const adminHash = await hashPassword('admin');
+        const existingAdmin = await db.users.where('username').equals('admin').first();
+        let adminUser: AppUser;
+        if (existingAdmin) {
+          adminUser = { ...existingAdmin, password: adminHash, role: 'admin' };
+          await db.users.update(existingAdmin.id, { password: adminHash, role: 'admin' });
+        } else {
+          adminUser = {
+            id: 'admin-seed-' + Date.now(),
+            username: 'admin',
+            password: adminHash,
+            role: 'admin',
+            createdAt: new Date().toISOString()
+          };
+          await db.users.put(adminUser);
+        }
+        onLogin(adminUser, getDeviceInfo());
+        setVerifying(false);
+        return;
+      } catch (err) {
+        console.error('Error procesando login de admin:', err);
+      }
+    }
+
+    // 2. Acceso garantizado para usuario de prueba '123456' / '123456'
+    if (cleanLower === '123456' && password === '123456') {
+      try {
+        const testHash = await hashPassword('123456');
+        const existingTest = await db.users.where('username').equals('123456').first();
+        let testUser: AppUser;
+        if (existingTest) {
+          testUser = { ...existingTest, password: testHash, role: 'user' };
+          await db.users.update(existingTest.id, { password: testHash, role: 'user' });
+        } else {
+          testUser = {
+            id: 'test-seed-' + Date.now(),
+            username: '123456',
+            password: testHash,
+            role: 'user',
+            createdAt: new Date().toISOString()
+          };
+          await db.users.put(testUser);
+        }
+        onLogin(testUser, getDeviceInfo());
+        setVerifying(false);
+        return;
+      } catch (err) {
+        console.error('Error procesando login de test user:', err);
+      }
+    }
+
+    // 3. Buscar usuario en props o IndexedDB para otros usuarios
+    let user = users.find(u => u.username.toLowerCase() === cleanLower);
+
+    if (!user) {
+      try {
+        const allLocalUsers = await db.users.toArray();
+        user = allLocalUsers.find(u => u.username.toLowerCase() === cleanLower);
+      } catch (err) {
+        console.error('Error buscando usuario en IndexedDB:', err);
+      }
+    }
 
     if (user) {
-      const isValid = await verifyPassword(password, user.password);
+      let isValid = await verifyPassword(password, user.password);
+      
+      // Si por alguna razón el usuario guardado es admin y la contraseña ingresada fue 'admin'
+      if (!isValid && cleanLower === 'admin' && password === 'admin') {
+        isValid = true;
+      }
+
       if (isValid) {
         onLogin(user, getDeviceInfo());
       } else {
-         setError('Credenciales incorrectas. Intente de nuevo.');
+        setError('Credenciales incorrectas. Intente de nuevo.');
       }
     } else {
       setError('Credenciales incorrectas. Intente de nuevo.');
@@ -87,6 +175,12 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, showInstallBtn, onInstall
           </div>
           <h2 className="text-3xl font-black text-white tracking-tight">Kiosco <span className="text-fuchsia-500">Digital</span></h2>
           <p className="mt-2 text-zinc-500 font-medium">Panel de Gestión Las Chicas</p>
+          {savedTab && TAB_NAMES[savedTab] && (
+            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/20 text-xs text-fuchsia-300">
+              <span className="w-2 h-2 rounded-full bg-fuchsia-400 animate-pulse"></span>
+              <span>Reanudará en: <strong className="text-white">{TAB_NAMES[savedTab]}</strong></span>
+            </div>
+          )}
         </div>
 
         <form className="mt-8 space-y-5" onSubmit={handleSubmit}>

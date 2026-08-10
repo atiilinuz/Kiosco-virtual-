@@ -20,7 +20,11 @@ const CashClosureModal: React.FC<CashClosureModalProps> = ({ isOpen, onClose, cu
   const [showSalesList, setShowSalesList] = useState(false);
   const [exportFeedback, setExportFeedback] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState<string>(() => {
-    return localStorage.getItem('kiosco_whatsapp_phone') || '';
+    const saved = localStorage.getItem('kiosco_whatsapp_phone');
+    if (saved && saved.trim()) {
+      return saved.startsWith('+') ? saved : (saved.startsWith('549') ? `+${saved}` : `+549${saved}`);
+    }
+    return '+549';
   });
 
   if (!isOpen || !currentUser) return null;
@@ -360,10 +364,21 @@ const CashClosureModal: React.FC<CashClosureModalProps> = ({ isOpen, onClose, cu
       ];
 
       const fullMessage = messageLines.join('\n');
-      const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+      let cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+
+      // Asegurar prefijo 549 para Argentina si sólo se ingresaron dígitos locales
+      if (cleanPhone && !cleanPhone.startsWith('549')) {
+        if (cleanPhone.startsWith('54')) {
+          cleanPhone = '549' + cleanPhone.slice(2);
+        } else if (cleanPhone.startsWith('9')) {
+          cleanPhone = '54' + cleanPhone;
+        } else {
+          cleanPhone = '549' + cleanPhone;
+        }
+      }
 
       if (cleanPhone) {
-        localStorage.setItem('kiosco_whatsapp_phone', cleanPhone);
+        localStorage.setItem('kiosco_whatsapp_phone', `+${cleanPhone}`);
       }
 
       const encodedMsg = encodeURIComponent(fullMessage);
@@ -542,7 +557,7 @@ const CashClosureModal: React.FC<CashClosureModalProps> = ({ isOpen, onClose, cu
                   type="tel"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="Número con código de país (Ej: +5491122334455)"
+                  placeholder="+5491171033622"
                   className="w-full bg-zinc-900 border border-zinc-700 text-white text-xs py-2.5 pl-9 pr-3 rounded-xl focus:border-emerald-500 outline-none"
                 />
               </div>
@@ -555,6 +570,7 @@ const CashClosureModal: React.FC<CashClosureModalProps> = ({ isOpen, onClose, cu
                 <span>Enviar a WhatsApp</span>
               </button>
             </div>
+            <p className="text-[10px] text-zinc-400 pl-1">Prefijo <strong className="text-emerald-400">+549</strong> pre-cargado. Ingresá el código de área y número (ej: +5491171033622).</p>
           </div>
 
           {/* Collapsible Sales Breakdown */}

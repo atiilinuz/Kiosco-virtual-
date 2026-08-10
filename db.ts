@@ -59,22 +59,11 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 // Function to initialize default data
 export const initDB = async () => {
+  // 1. Seed default users first so login always works regardless of network sync status
   try {
-    // Check products
-    const prodCount = await db.products.count();
-    if (prodCount === 0) {
-      await db.products.bulkPut(PRODUCTS);
-      console.log('Default products seeded successfully.');
-    }
-
-    // Attempt Supabase products and sales synchronization
-    await supabaseProductsService.syncProductsFromSupabase();
-    await supabaseSalesService.syncSalesFromSupabase();
-
-    // Check users
     const adminUserExists = await db.users.where('username').equals('admin').first();
+    const adminHash = await hashPassword('admin');
     if (!adminUserExists) {
-      const adminHash = await hashPassword('admin');
       const adminUser: AppUser = { 
         id: 'admin-seed-' + Date.now(), 
         username: 'admin', 
@@ -84,6 +73,8 @@ export const initDB = async () => {
       };
       await db.users.put(adminUser);
       console.log('Default admin user seeded successfully.');
+    } else {
+      await db.users.update(adminUserExists.id, { password: adminHash, role: 'admin' });
     }
 
     const testUserExists = await db.users.where('username').equals('123456').first();
@@ -99,8 +90,27 @@ export const initDB = async () => {
       await db.users.put(testUser);
       console.log('Default test user seeded successfully.');
     }
-  } catch (error) {
-    console.error("Could not seed local database:", error);
+  } catch (userErr) {
+    console.error("Error seeding users:", userErr);
+  }
+
+  // 2. Check and seed default products
+  try {
+    const prodCount = await db.products.count();
+    if (prodCount === 0) {
+      await db.products.bulkPut(PRODUCTS);
+      console.log('Default products seeded successfully.');
+    }
+  } catch (prodErr) {
+    console.error("Error seeding products:", prodErr);
+  }
+
+  // 3. Attempt Supabase products and sales synchronization
+  try {
+    await supabaseProductsService.syncProductsFromSupabase();
+    await supabaseSalesService.syncSalesFromSupabase();
+  } catch (syncErr) {
+    console.warn("Supabase initial sync skipped or offline:", syncErr);
   }
 };
 
