@@ -601,17 +601,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
-        const newProducts: Product[] = data.map((row: any, index) => ({
-          id: `prod-${Date.now()}-${index}`,
-          barcode: row.Codigo || '',
-          name: row.Nombre || 'Sin nombre',
-          price: Number(row.Precio) || 0,
-          category: row.Categoria?.toLowerCase() || 'varios',
-          image: row.Imagen || 'https://via.placeholder.com/150',
-          description: row.Descripcion || '',
-          stock: Number(row.Stock) || 0,
-          isPopular: false
-        }));
+        const newProducts: Product[] = data.map((row: any, index) => {
+          const rawPrice = row.Precio ?? row.price ?? row.salePrice ?? row.sale_price ?? row.precio ?? row.precioVenta ?? row.costPrice ?? 0;
+          const parsedPrice = typeof rawPrice === 'number' ? rawPrice : parseFloat(String(rawPrice).replace(',', '.'));
+          const finalPrice = isNaN(parsedPrice) ? 0 : parsedPrice;
+
+          const rawStock = row.Stock ?? row.stock ?? row.stockQuantity ?? row.cantidad ?? row.unidades ?? row.cant ?? row.quantity ?? 0;
+          const parsedStock = typeof rawStock === 'number' ? rawStock : parseInt(String(rawStock), 10);
+          const finalStock = isNaN(parsedStock) ? 0 : parsedStock;
+
+          return {
+            id: row.id ? String(row.id) : `prod-${Date.now()}-${index}`,
+            barcode: String(row.Codigo || row.barcode || row.code || row.codigo || '').trim(),
+            name: String(row.Nombre || row.name || row.nombre || 'Sin nombre').trim(),
+            price: finalPrice,
+            category: String(row.Categoria || row.category || row.categoria || 'varios').toLowerCase(),
+            image: row.Imagen || row.image || row.imageUrl || row.image_url || 'https://via.placeholder.com/150',
+            description: String(row.Descripcion || row.description || row.brand || row.marca || '').trim(),
+            stock: finalStock,
+            isPopular: false
+          };
+        });
         onImportProducts(newProducts);
         setImportResult({ success: true, count: newProducts.length, message: `Se importaron ${newProducts.length} productos correctamente.` });
       } catch (error) {
@@ -629,18 +639,59 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       try {
         const text = evt.target?.result as string;
         const data = JSON.parse(text);
-        if (!Array.isArray(data)) throw new Error('El JSON debe ser un array de productos.');
-        const newProducts: Product[] = data.map((item: any, index) => ({
-          id: item.id || `prod-json-${Date.now()}-${index}`,
-          barcode: item.barcode || '',
-          name: item.name || 'Sin nombre',
-          price: Number(item.price) || 0,
-          category: item.category || 'varios',
-          image: item.image || '',
-          description: item.description || '',
-          stock: Number(item.stock) || 0,
-          isPopular: !!item.isPopular
-        }));
+        
+        let rawList: any[] = [];
+        if (Array.isArray(data)) {
+          rawList = data;
+        } else if (data && Array.isArray(data.products)) {
+          rawList = data.products;
+        } else if (data && Array.isArray(data.data)) {
+          rawList = data.data;
+        } else if (data && Array.isArray(data.items)) {
+          rawList = data.items;
+        } else {
+          throw new Error('El JSON debe ser un array de productos o contener una lista.');
+        }
+
+        const newProducts: Product[] = rawList.map((item: any, index) => {
+          // Soporta salePrice, price, sale_price, precio, costPrice, etc.
+          const rawPrice = item.price ?? item.salePrice ?? item.sale_price ?? item.precio ?? item.precioVenta ?? item.precio_venta ?? item.Precio ?? item.costPrice ?? item.precioCosto ?? 0;
+          const parsedPrice = typeof rawPrice === 'number' ? rawPrice : parseFloat(String(rawPrice).replace(',', '.'));
+          const finalPrice = isNaN(parsedPrice) ? 0 : parsedPrice;
+
+          // Soporta stock, stockQuantity, cantidad, unidades, cant, units, etc.
+          const rawStock = item.stock ?? item.Stock ?? item.stockQuantity ?? item.stock_actual ?? item.cantidad ?? item.unidades ?? item.cant ?? item.quantity ?? item.units ?? 0;
+          const parsedStock = typeof rawStock === 'number' ? rawStock : parseInt(String(rawStock), 10);
+          const finalStock = isNaN(parsedStock) ? 0 : parsedStock;
+
+          // Soporta image, imageUrl, image_url, imagen, Imagen, img
+          const image = item.image || item.imageUrl || item.image_url || item.imagen || item.Imagen || item.img || '';
+
+          // Soporta barcode, code, codigo, Codigo, bar_code
+          const barcode = String(item.barcode || item.code || item.codigo || item.Codigo || item.bar_code || '').trim();
+
+          // Soporta name, nombre, Nombre, descripcion, description
+          const name = String(item.name || item.nombre || item.Nombre || item.descripcion || item.description || 'Sin nombre').trim();
+
+          // Soporta category, categoria, Categoria
+          const category = String(item.category || item.categoria || item.Categoria || 'varios').toLowerCase();
+
+          // Soporta description, marca, brand, provider, proveedor
+          const description = String(item.description || item.descripcion || item.brand || item.marca || item.provider || item.proveedor || '').trim();
+
+          return {
+            id: item.id ? String(item.id) : `prod-json-${Date.now()}-${index}`,
+            barcode,
+            name,
+            price: finalPrice,
+            category,
+            image,
+            description,
+            stock: finalStock,
+            isPopular: !!item.isPopular
+          };
+        });
+
         onImportProducts(newProducts);
         setImportResult({ success: true, count: newProducts.length, message: `Se importaron ${newProducts.length} productos desde JSON.` });
       } catch (error) {

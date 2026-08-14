@@ -402,9 +402,15 @@ class SyncQueueManager {
 
     } catch (error: any) {
       console.error('[SyncQueue] Error en validación de integridad:', error);
+      
+      let friendlyMessage = error.message || String(error);
+      if (friendlyMessage.includes('Failed to fetch') || friendlyMessage.includes('TypeError')) {
+        friendlyMessage = 'No se pudo conectar con el servidor de Supabase. Posibles causas: 1) Sin conexión a Internet o bloqueada por cortafuegos/red, 2) Proyecto de Supabase pausado o inactivo en Supabase Dashboard, 3) URL o Llave de Supabase incorrecta en las variables de entorno. La aplicación continúa funcionando en modo local sin perder datos.';
+      }
+
       return {
         success: false,
-        message: `Error al validar integridad: ${error.message || String(error)}`,
+        message: `Error al validar integridad: ${friendlyMessage}`,
         productsSummary: { localTotal: 0, remoteTotal: 0, pushedToRemote: 0, pulledFromRemote: 0 },
         salesSummary: { localTotal: 0, remoteTotal: 0, pushedToRemote: 0, pulledFromRemote: 0 },
         pendingQueueProcessed: 0
