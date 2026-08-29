@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { X, Printer } from 'lucide-react';
+import { X, Printer, Share2 } from 'lucide-react';
 import { CartItem } from '../types';
 import { formatCurrency } from '../utils';
 
@@ -9,13 +9,25 @@ interface TicketModalProps {
   onClose: () => void;
   items: CartItem[];
   total: number;
+  paymentMethod?: string;
 }
 
-const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, items, total }) => {
+const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, items, total, paymentMethod = 'Efectivo' }) => {
   if (!isOpen) return null;
 
   const date = new Date().toLocaleDateString('es-AR');
   const time = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+  const handleShareWhatsApp = () => {
+    let text = `*KIOSCO LAS CHICAS*\n${date} ${time}\n----------------------\n`;
+    items.forEach(item => {
+      text += `${item.quantity}x ${item.name} = ${formatCurrency(item.price * item.quantity)}\n`;
+    });
+    text += `----------------------\n*TOTAL: ${formatCurrency(total)}*\nMedio de pago: ${paymentMethod.toUpperCase()}\n\n¡Gracias por su compra!`;
+    
+    const encoded = encodeURIComponent(text);
+    window.open(`https://wa.me/?text=${encoded}`, '_blank');
+  };
 
   const handleNativePrint = () => {
     // Eliminar iframe previo si existe
@@ -118,6 +130,9 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, items, total
               <span>TOTAL</span>
               <span>${formatCurrency(total)}</span>
             </div>
+            <div style="font-size: 10px; margin-top: 4px; text-align: right;">
+              Pago: ${paymentMethod.toUpperCase()}
+            </div>
           </div>
           
           <div class="center footer">
@@ -196,17 +211,24 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, items, total
             </div>
 
             {/* Ragged Bottom */}
-            <div className="absolute bottom-0 left-0 right-0 h-3 bg-zinc-900 z-10 transform rotate-180" style={{background: 'linear-gradient(135deg, transparent 75%, #18181b 75%) 0 0, linear-gradient(-135deg, transparent 75%, #18181b 75%) 0 0', backgroundSize: '20px 20px'}}></div>
+            <div className="absolute bottom-0 left-0 right-0 h-3 bg-zinc-900 z-10 transform rotate-180" style={{background: 'linear-gradient(135deg, transparent 75%, #18181b 75%, transparent 75%) 0 0, linear-gradient(-135deg, transparent 75%, #18181b 75%) 0 0', backgroundSize: '20px 20px'}}></div>
         </div>
 
         {/* Actions */}
-        <div className="mt-8 flex gap-4 w-full max-w-[300px]">
+        <div className="mt-8 flex flex-col gap-3 w-full max-w-[300px]">
             <button 
                 onClick={handleNativePrint}
-                className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black font-black py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95"
+                className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 text-sm"
             >
-                <Printer size={22} />
+                <Printer size={20} />
                 IMPRIMIR TICKET
+            </button>
+            <button 
+                onClick={handleShareWhatsApp}
+                className="w-full bg-emerald-900/60 hover:bg-emerald-800 border border-emerald-500/40 text-emerald-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all text-xs"
+            >
+                <Share2 size={18} />
+                Compartir por WhatsApp
             </button>
         </div>
       </div>
@@ -215,3 +237,4 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, items, total
 };
 
 export default TicketModal;
+

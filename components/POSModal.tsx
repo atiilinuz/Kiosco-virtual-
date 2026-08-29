@@ -1,15 +1,17 @@
 
-import React, { useState } from 'react';
-import { X, Zap, Printer, CheckCircle2, ShoppingBag, Banknote, CreditCard } from 'lucide-react';
-import { CartItem } from '../types';
+import React, { useState, useEffect } from 'react';
+import { X, Zap, Printer, CheckCircle2, ShoppingBag, Banknote, CreditCard, UserCheck, Smartphone, Plus } from 'lucide-react';
+import { CartItem, CustomerAccount } from '../types';
 import TicketModal from './TicketModal';
 import { formatCurrency } from '../utils';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db';
 
 interface POSModalProps {
   isOpen: boolean;
   onClose: () => void;
   items: CartItem[];
-  onCompleteSale: (items: CartItem[], total: number, paymentMethod: string) => void;
+  onCompleteSale: (items: CartItem[], total: number, paymentMethod: string, customerId?: string, customerName?: string) => void;
 }
 
 const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteSale }) => {
@@ -18,17 +20,67 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
   const [isProcessing, setIsProcessing] = useState(false);
   const [paidAmount, setPaidAmount] = useState<string>('');
   
+  // Clientes para fiados
+  const customers = useLiveQuery(() => db.customers.toArray()) ?? [];
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [newCustomerName, setNewCustomerName] = useState<string>('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState<string>('');
+  const [showNewCustomerForm, setShowNewCustomerForm] = useState<boolean>(false);
+
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   const parsedPaidAmount = parseFloat(paidAmount) || 0;
   const change = parsedPaidAmount > total ? parsedPaidAmount - total : 0;
 
+  // Atajo Teclado: ENTER para finalizar cobro
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !isProcessing && items.length > 0) {
+        // Evitar submit si estamos creando un cliente nuevo
+        if (showNewCustomerForm) return;
+        handleFinishPayment();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isProcessing, items, paymentMethod, paidAmount, selectedCustomerId]);
+
   const handleFinishPayment = async () => {
     if (isProcessing) return;
+
+    let custId = selectedCustomerId;
+    let custName = customers.find(c => c.id === selectedCustomerId)?.name;
+
+    if (paymentMethod === 'cuenta_corriente') {
+      if (showNewCustomerForm) {
+        if (!newCustomerName.trim()) {
+          alert('Por favor ingrese el nombre del cliente para registrar la cuenta corriente.');
+          return;
+        }
+        const newCust: CustomerAccount = {
+          id: `cust-${Date.now()}`,
+          name: newCustomerName.trim(),
+          phone: newCustomerPhone.trim(),
+          balance: 0,
+          createdAt: new Date().toISOString(),
+          transactions: []
+        };
+        await db.customers.put(newCust);
+        custId = newCust.id;
+        custName = newCust.name;
+      } else if (!selectedCustomerId) {
+        alert('Por favor seleccione o cree un cliente para anotar a Cuenta Corriente.');
+        return;
+      }
+    }
+
     setIsProcessing(true);
     try {
-      await onCompleteSale(items, total, paymentMethod);
-      onClose(); // Cerrar explícitamente el modal desde aquí para máxima confiabilidad
+      await onCompleteSale(items, total, paymentMethod, custId, custName);
+      onClose();
     } catch (err) {
       console.error("Error al finalizar el cobro:", err);
     } finally {
@@ -52,7 +104,7 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
               </div>
               <div>
                 <h2 className="text-xl font-bold text-white">Cierre de Venta</h2>
-                <p className="text-xs text-zinc-500 uppercase tracking-widest font-bold">Terminal de Cobro</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-widest font-bold">Terminal de Cobro (Presione Enter)</p>
               </div>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-zinc-800 text-zinc-500 hover:text-white rounded-full transition-colors">
@@ -86,23 +138,101 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
                 {/* Payment Method Selector */}
                 <div className="space-y-3">
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Método de Pago</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <button 
+                      type="button"
                       onClick={() => setPaymentMethod('efectivo')}
-                      className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-all gap-2 ${paymentMethod === 'efectivo' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.1)]' : 'bg-zinc-950 border-zinc-800 text-zinc-500'}`}
+                      className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all gap-1.5 ${paymentMethod === 'efectivo' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.1)]' : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-white'}`}
                     >
-                      <Banknote size={24} />
+                      <Banknote size={20} />
                       <span className="text-xs font-bold uppercase">Efectivo</span>
                     </button>
+
                     <button 
+                      type="button"
                       onClick={() => setPaymentMethod('transferencia')}
-                      className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-all gap-2 ${paymentMethod === 'transferencia' ? 'bg-fuchsia-500/10 border-fuchsia-500 text-fuchsia-400 shadow-[0_0_20px_rgba(217,70,239,0.1)]' : 'bg-zinc-950 border-zinc-800 text-zinc-500'}`}
+                      className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all gap-1.5 ${paymentMethod === 'transferencia' ? 'bg-fuchsia-500/10 border-fuchsia-500 text-fuchsia-400 shadow-[0_0_20px_rgba(217,70,239,0.1)]' : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-white'}`}
                     >
-                      <CreditCard size={24} />
-                      <span className="text-xs font-bold uppercase">Transferencia</span>
+                      <Smartphone size={20} />
+                      <span className="text-xs font-bold uppercase">Transf. / MP</span>
+                    </button>
+
+                    <button 
+                      type="button"
+                      onClick={() => setPaymentMethod('debito')}
+                      className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all gap-1.5 ${paymentMethod === 'debito' ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400' : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-white'}`}
+                    >
+                      <CreditCard size={20} />
+                      <span className="text-xs font-bold uppercase">Débito</span>
+                    </button>
+
+                    <button 
+                      type="button"
+                      onClick={() => setPaymentMethod('credito')}
+                      className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all gap-1.5 ${paymentMethod === 'credito' ? 'bg-amber-500/10 border-amber-500 text-amber-400' : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-white'}`}
+                    >
+                      <CreditCard size={20} />
+                      <span className="text-xs font-bold uppercase">Crédito</span>
+                    </button>
+
+                    <button 
+                      type="button"
+                      onClick={() => setPaymentMethod('cuenta_corriente')}
+                      className={`col-span-2 sm:col-span-1 flex flex-col items-center justify-center p-3 rounded-2xl border transition-all gap-1.5 ${paymentMethod === 'cuenta_corriente' ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400' : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-white'}`}
+                    >
+                      <UserCheck size={20} />
+                      <span className="text-xs font-bold uppercase">Fiado / Cta Cte</span>
                     </button>
                   </div>
                 </div>
+
+                {/* Fiado Customer Selector */}
+                {paymentMethod === 'cuenta_corriente' && (
+                  <div className="p-4 bg-indigo-950/30 border border-indigo-500/30 rounded-2xl space-y-3 animate-fade-in">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-indigo-300 uppercase tracking-widest">Cliente para Cta Cte</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setShowNewCustomerForm(!showNewCustomerForm)}
+                        className="text-xs font-bold text-indigo-400 hover:underline flex items-center gap-1"
+                      >
+                        <Plus size={14} /> {showNewCustomerForm ? 'Elegir existente' : 'Nuevo Cliente'}
+                      </button>
+                    </div>
+
+                    {!showNewCustomerForm ? (
+                      <select 
+                        value={selectedCustomerId}
+                        onChange={(e) => setSelectedCustomerId(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-700 text-white rounded-xl p-3 outline-none focus:border-indigo-500"
+                      >
+                        <option value="">-- Seleccionar Cliente --</option>
+                        {customers.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.phone ? `(${c.phone})` : ''} - Saldo: {formatCurrency(c.balance)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="space-y-2">
+                        <input 
+                          type="text"
+                          placeholder="Nombre y Apellido del Cliente *"
+                          value={newCustomerName}
+                          onChange={(e) => setNewCustomerName(e.target.value)}
+                          className="w-full bg-zinc-900 border border-zinc-700 text-white rounded-xl p-3 text-sm outline-none focus:border-indigo-500"
+                        />
+                        <input 
+                          type="text"
+                          placeholder="Teléfono (Opcional)"
+                          value={newCustomerPhone}
+                          onChange={(e) => setNewCustomerPhone(e.target.value)}
+                          className="w-full bg-zinc-900 border border-zinc-700 text-white rounded-xl p-3 text-sm outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Amount Given (Efectivo) */}
                 {paymentMethod === 'efectivo' && (
@@ -117,6 +247,7 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
                         value={paidAmount}
                         onChange={(e) => setPaidAmount(e.target.value)}
                         placeholder="Ej. 1000"
+                        autoFocus
                         className="w-full bg-black border-2 border-zinc-700/50 rounded-xl py-4 pl-12 pr-4 text-white font-black outline-none focus:border-cyan-500 text-3xl sm:text-4xl transition-all"
                       />
                     </div>
@@ -176,7 +307,7 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
               <button 
                 onClick={handleFinishPayment}
                 disabled={isProcessing}
-                className="w-full flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-5 rounded-2xl shadow-2xl shadow-emerald-950/30 transition-all active:scale-[0.98] border border-emerald-400/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-5 rounded-2xl shadow-2xl shadow-emerald-950/30 transition-all active:scale-[0.98] border border-emerald-400/20 disabled:opacity-50 disabled:cursor-not-allowed text-lg"
               >
                 {isProcessing ? (
                   <>
@@ -186,7 +317,7 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
                 ) : (
                   <>
                     <CheckCircle2 size={24} />
-                    FINALIZAR COBRO
+                    FINALIZAR COBRO (ENTER)
                   </>
                 )}
               </button>
@@ -213,3 +344,4 @@ const POSModal: React.FC<POSModalProps> = ({ isOpen, onClose, items, onCompleteS
 };
 
 export default POSModal;
+

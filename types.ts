@@ -4,11 +4,15 @@ export interface Product {
   barcode?: string;
   name: string;
   price: number;
+  costPrice?: number;
   category: string;
   image: string;
   description: string;
   isPopular?: boolean;
   stock: number;
+  minStock?: number;
+  isCombo?: boolean;
+  comboItems?: { productId: string; quantity: number }[];
 }
 
 export interface Supplier {
@@ -47,11 +51,16 @@ export interface Sale {
   userName?: string;
   items: CartItem[];
   total: number;
+  costTotal?: number;
   paymentMethod: string;
   timestamp: string;
   createdAt?: string;
   paidAmount?: number;
   change?: number;
+  refunded?: boolean;
+  refundReason?: string;
+  customerId?: string;
+  customerName?: string;
 }
 
 export interface Category {
@@ -86,3 +95,35 @@ export interface ErrorLog {
   userId?: string;
   username?: string;
 }
+
+export interface Expense {
+  id: string;
+  amount: number;
+  concept: string;
+  category: 'proveedores' | 'servicios' | 'mercaderia' | 'varios';
+  paymentMethod: string;
+  timestamp: string;
+  userId: string;
+  username: string;
+}
+
+export interface CustomerTransaction {
+  id: string;
+  customerId: string;
+  type: 'debt' | 'payment';
+  amount: number;
+  description: string;
+  timestamp: string;
+  saleId?: string;
+}
+
+export interface CustomerAccount {
+  id: string;
+  name: string;
+  phone: string;
+  balance: number;
+  createdAt: string;
+  notes?: string;
+  transactions: CustomerTransaction[];
+}
+

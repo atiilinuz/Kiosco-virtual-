@@ -13,8 +13,11 @@ import {
   FileJson, FileSpreadsheet, ClipboardCheck, MousePointerClick,
   ArrowRight, ShoppingBag, Table, Trophy, Save, Filter, ArrowUpDown, AlertTriangle,
   Sun, Moon, Sunrise, Sunset, Database, HardDriveDownload, HardDriveUpload,
-  RefreshCw, Play, Calendar, History, Bug
+  RefreshCw, Play, Calendar, History, Bug, UserCheck
 } from 'lucide-react';
+import { PricingAdjustmentView } from './PricingAdjustmentView';
+import { CustomerAccountsView } from './CustomerAccountsView';
+import { ThemeSelector } from './ThemeSelector';
 import * as XLSX from 'xlsx';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
@@ -150,7 +153,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   sales = [],
   isOnline = true
 }) => {
-  const [activeTab, setActiveTab] = useState<'stats' | 'inventory' | 'suppliers' | 'users' | 'sync' | 'help' | 'calendar' | 'product-logs' | 'error-logs'>(() => {
+  const [activeTab, setActiveTab] = useState<'stats' | 'inventory' | 'suppliers' | 'users' | 'sync' | 'help' | 'calendar' | 'product-logs' | 'error-logs' | 'customers' | 'pricing'>(() => {
     return (localStorage.getItem('kiosco_admin_active_tab') as any) || 'stats';
   });
   const [editingPendingSale, setEditingPendingSale] = useState<any | null>(null);
@@ -777,7 +780,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         
         <nav className="flex-1 space-y-2 px-2.5">
           {[
-            { id: 'stats', label: 'Estadísticas', icon: <BarChart3 size={20} /> },
+            { id: 'stats', label: 'Estadísticas y Rentabilidad', icon: <BarChart3 size={20} /> },
+            { id: 'customers', label: 'Cuentas Corrientes (Fiados)', icon: <UserCheck size={20} /> },
+            { id: 'pricing', label: 'Aumento Masivo de Precios', icon: <DollarSign size={20} /> },
             { id: 'calendar', label: 'Calendario', icon: <Calendar size={20} /> },
             { id: 'inventory', label: 'Inventario', icon: <Package size={20} /> },
             { id: 'suppliers', label: 'Proveedores', icon: <LayoutGrid size={20} /> },
@@ -2217,6 +2222,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* HELP / SETTINGS TAB */}
         {activeTab === 'help' && (
            <div className="space-y-8 animate-fade-in pb-10">
+              {/* Theme and Mode Customization */}
+              <ThemeSelector />
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                  {/* Backup Tools */}
                  <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-[2rem]">
@@ -2577,6 +2585,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       )}
+
+        {/* PRICING TAB */}
+        {activeTab === 'pricing' && (
+          <PricingAdjustmentView products={products} onUpdateProduct={onUpdateProduct} />
+        )}
+
+        {/* CUSTOMERS TAB */}
+        {activeTab === 'customers' && (
+          <CustomerAccountsView />
+        )}
 
       {/* Pending Sale Edit Modal */}
       {editingPendingSale && (

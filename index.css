@@ -1,0 +1,272 @@
+/* ==========================================================================
+   KIOSCO DIGITAL - GLOBAL THEME & COLOR ENGINE
+   ========================================================================== */
+
+:root {
+  --theme-bg-primary: #000000;
+  --theme-bg-card: #18181b;
+  --theme-bg-card-hover: #27272a;
+  --theme-border: #27272a;
+  --theme-text-primary: #ffffff;
+  --theme-text-secondary: #a1a1aa;
+  --theme-accent-primary: #d946ef;
+  --theme-accent-secondary: #8b5cf6;
+  --theme-header-bg: rgba(0, 0, 0, 0.85);
+}
+
+/* Base Transition */
+html, body, #root {
+  background-color: var(--theme-bg-primary);
+  color: var(--theme-text-primary);
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: var(--theme-bg-primary);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--theme-border);
+  border-radius: 4px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-bg-card-hover);
+}
+
+/* ==========================================================================
+   DARK THEME CUSTOM PALETTES OVERRIDES
+   ========================================================================== */
+
+[data-theme="dark"]:not([data-palette="dark_classic"]) {
+  background-color: var(--theme-bg-primary);
+}
+
+[data-theme="dark"]:not([data-palette="dark_classic"]) header {
+  background-color: var(--theme-header-bg) !important;
+  border-color: var(--theme-border) !important;
+}
+
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-black {
+  background-color: var(--theme-bg-primary) !important;
+}
+
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-zinc-950,
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-zinc-950\/60,
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-zinc-950\/80 {
+  background-color: var(--theme-bg-primary) !important;
+}
+
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-zinc-900,
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-zinc-900\/40,
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-zinc-900\/50,
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-zinc-900\/60,
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-zinc-900\/80 {
+  background-color: var(--theme-bg-card) !important;
+}
+
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-zinc-800,
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-zinc-800\/40,
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-zinc-800\/60,
+[data-theme="dark"]:not([data-palette="dark_classic"]) .bg-zinc-800\/80 {
+  background-color: var(--theme-bg-card-hover) !important;
+}
+
+[data-theme="dark"]:not([data-palette="dark_classic"]) .border-zinc-800,
+[data-theme="dark"]:not([data-palette="dark_classic"]) .border-zinc-800\/50,
+[data-theme="dark"]:not([data-palette="dark_classic"]) .border-zinc-800\/80,
+[data-theme="dark"]:not([data-palette="dark_classic"]) .border-zinc-700 {
+  border-color: var(--theme-border) !important;
+}
+
+/* ==========================================================================
+   LIGHT THEME GLOBAL ENGINE
+   ========================================================================== */
+
+[data-theme="light"] {
+  background-color: var(--theme-bg-primary) !important;
+  color: var(--theme-text-primary) !important;
+}
+
+[data-theme="light"] body,
+[data-theme="light"] #root {
+  background-color: var(--theme-bg-primary) !important;
+  color: var(--theme-text-primary) !important;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: var(--theme-bg-primary);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Header in Light Mode */
+[data-theme="light"] header {
+  background-color: var(--theme-header-bg) !important;
+  border-color: var(--theme-border) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Background Replacements in Light Mode */
+[data-theme="light"] .bg-black,
+[data-theme="light"] .bg-zinc-950,
+[data-theme="light"] .bg-zinc-950\/60,
+[data-theme="light"] .bg-zinc-950\/80,
+[data-theme="light"] .bg-black\/80,
+[data-theme="light"] .bg-black\/60,
+[data-theme="light"] .bg-black\/40,
+[data-theme="light"] .bg-black\/50,
+[data-theme="light"] .bg-black\/20 {
+  background-color: var(--theme-bg-primary) !important;
+}
+
+[data-theme="light"] .bg-zinc-900,
+[data-theme="light"] .bg-zinc-900\/40,
+[data-theme="light"] .bg-zinc-900\/50,
+[data-theme="light"] .bg-zinc-900\/60,
+[data-theme="light"] .bg-zinc-900\/80,
+[data-theme="light"] .bg-zinc-900\/90 {
+  background-color: var(--theme-bg-card) !important;
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .bg-zinc-800,
+[data-theme="light"] .bg-zinc-800\/40,
+[data-theme="light"] .bg-zinc-800\/50,
+[data-theme="light"] .bg-zinc-800\/60,
+[data-theme="light"] .bg-zinc-800\/80 {
+  background-color: var(--theme-bg-card-hover) !important;
+}
+
+/* Border Replacements in Light Mode */
+[data-theme="light"] .border-zinc-800,
+[data-theme="light"] .border-zinc-800\/50,
+[data-theme="light"] .border-zinc-800\/80,
+[data-theme="light"] .border-zinc-800\/60,
+[data-theme="light"] .border-zinc-700,
+[data-theme="light"] .border-zinc-900 {
+  border-color: var(--theme-border) !important;
+}
+
+[data-theme="light"] .divide-zinc-800\/60 > * + * {
+  border-color: var(--theme-border) !important;
+}
+
+/* Text Replacements in Light Mode */
+[data-theme="light"] .text-white,
+[data-theme="light"] .text-zinc-100,
+[data-theme="light"] .text-zinc-200 {
+  color: var(--theme-text-primary) !important;
+}
+
+[data-theme="light"] .text-zinc-300,
+[data-theme="light"] .text-zinc-400,
+[data-theme="light"] .text-zinc-500 {
+  color: var(--theme-text-secondary) !important;
+}
+
+[data-theme="light"] .text-zinc-600 {
+  color: #64748b !important;
+}
+
+/* Inputs, Textareas & Selects in Light Mode */
+[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="light"] select,
+[data-theme="light"] textarea {
+  background-color: var(--theme-bg-card) !important;
+  color: var(--theme-text-primary) !important;
+  border-color: var(--theme-border) !important;
+}
+
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Tables in Light Mode */
+[data-theme="light"] thead {
+  background-color: var(--theme-bg-card-hover) !important;
+}
+
+[data-theme="light"] thead th {
+  color: var(--theme-text-secondary) !important;
+}
+
+[data-theme="light"] tbody tr:hover {
+  background-color: var(--theme-bg-card-hover) !important;
+}
+
+/* Modal Backdrops in Light Mode */
+[data-theme="light"] .fixed.inset-0.bg-black\/80,
+[data-theme="light"] .fixed.inset-0.bg-black\/85,
+[data-theme="light"] .fixed.inset-0.bg-black\/90,
+[data-theme="light"] .fixed.inset-0.bg-black\/95 {
+  background-color: rgba(15, 23, 42, 0.65) !important;
+  backdrop-filter: blur(8px);
+}
+
+/* Light Mode Overrides for Specific Accents */
+[data-theme="light"] .bg-zinc-950 {
+  background-color: var(--theme-bg-primary) !important;
+}
+
+/* Shadow enhancements in light mode */
+[data-theme="light"] .shadow-2xl {
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.12) !important;
+}
+
+[data-theme="light"] .shadow-xl {
+  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .shadow-lg {
+  box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Keep essential colors high-contrast */
+[data-theme="light"] .text-emerald-400 {
+  color: #059669 !important;
+}
+
+[data-theme="light"] .text-rose-400,
+[data-theme="light"] .text-red-400 {
+  color: #e11d48 !important;
+}
+
+[data-theme="light"] .text-amber-400,
+[data-theme="light"] .text-yellow-400 {
+  color: #d97706 !important;
+}
+
+[data-theme="light"] .text-blue-400 {
+  color: #2563eb !important;
+}
+
+[data-theme="light"] .text-indigo-400 {
+  color: #4f46e5 !important;
+}
+
+[data-theme="light"] .text-purple-400,
+[data-theme="light"] .text-fuchsia-400 {
+  color: #9333ea !important;
+}
+
+/* Code / Monospace blocks */
+[data-theme="light"] code,
+[data-theme="light"] pre,
+[data-theme="light"] .font-mono {
+  color: var(--theme-text-primary);
+}

@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { 
   X, Calculator, Banknote, CreditCard, ShoppingBag, Calendar, User, 
   Printer, FileSpreadsheet, FileText, ChevronDown, ChevronUp, AlertCircle, 
-  CheckCircle2, Filter, Send, MessageSquare, Phone
+  CheckCircle2, Filter, Send, MessageSquare, Phone, Download, Plus, Smartphone, UserCheck
 } from 'lucide-react';
-import { Sale, AppUser } from '../types';
+import { Sale, AppUser, Expense } from '../types';
 import { formatCurrency } from '../utils';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db, dbService } from '../db';
 
 interface CashClosureModalProps {
   isOpen: boolean;
@@ -19,6 +21,16 @@ const CashClosureModal: React.FC<CashClosureModalProps> = ({ isOpen, onClose, cu
   const [dateFilter, setDateFilter] = useState<'today' | 'all'>('today');
   const [showSalesList, setShowSalesList] = useState(false);
   const [exportFeedback, setExportFeedback] = useState<string | null>(null);
+
+  // Estados para Registro de Gastos (Caja Chica)
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [expenseDesc, setExpenseDesc] = useState('');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseCategory, setExpenseCategory] = useState<'Proveedor' | 'Retiro' | 'Servicios' | 'Insumos' | 'Otro'>('Proveedor');
+
+  // Cargar gastos de Dexie
+  const expenses = useLiveQuery(() => db.expenses.toArray()) ?? [];
+
   const [phoneNumber, setPhoneNumber] = useState<string>(() => {
     const saved = localStorage.getItem('kiosco_whatsapp_phone');
     if (saved && saved.trim()) {
@@ -67,18 +79,33 @@ const CashClosureModal: React.FC<CashClosureModalProps> = ({ isOpen, onClose, cu
     return matchesDate && matchesUser;
   });
 
-  // Ventas de hoy en el sistema independientemente del usuario (para la sugerencia inteligente)
-  const allTodaySalesCount = sales.filter(s => isToday(parseSaleDate(s))).length;
+  // Filtrar gastos
+  const filteredExpenses = expenses.filter(e => {
+    const eDate = new Date(e.timestamp);
+    return dateFilter === 'today' ? isToday(eDate) : true;
+  });
+
+  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
   const totals = filteredSales.reduce((acc, sale) => {
+    if (sale.refunded) return acc;
+
     acc.totalAmount += sale.total;
     acc.totalProducts += (sale.items || []).reduce((sum, item) => sum + item.quantity, 0);
     
     const method = String(sale.paymentMethod || '').toLowerCase();
     if (method === 'cash' || method === 'efectivo') {
       acc.cashTotal += sale.total;
-    } else {
+    } else if (method === 'transferencia' || method === 'mp') {
       acc.transferTotal += sale.total;
+    } else if (method === 'debito') {
+      acc.debitoTotal += sale.total;
+    } else if (method === 'credito') {
+      acc.creditoTotal += sale.total;
+    } else if (method === 'cuenta_corriente' || method === 'fiado') {
+      acc.cuentaCorrienteTotal += sale.total;
+    } else {
+      acc.cashTotal += sale.total;
     }
     
     return acc;
@@ -86,8 +113,66 @@ const CashClosureModal: React.FC<CashClosureModalProps> = ({ isOpen, onClose, cu
     totalAmount: 0,
     totalProducts: 0,
     cashTotal: 0,
-    transferTotal: 0
+    transferTotal: 0,
+    debitoTotal: 0,
+    creditoTotal: 0,
+    cuentaCorrienteTotal: 0
   });
+
+  const netCashInDrawer = Math.max(0, totals.cashTotal - totalExpenses);
+
+  const handleAddExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amountNum = parseFloat(expenseAmount);
+    if (!expenseDesc.trim() || isNaN(amountNum) || amountNum <= 0) {
+      alert('Ingrese una descripción y un monto válido.');
+      return;
+    }
+
+    const newExpense: Expense = {
+      id: `exp-${Date.now()}`,
+      description: expenseDesc.trim(),
+      amount: amountNum,
+      category: expenseCategory,
+      timestamp: new Date().toISOString(),
+      user: currentUser.username
+    };
+
+    await dbService.addExpense(newExpense);
+    setExpenseDesc('');
+    setExpenseAmount('');
+    setShowExpenseForm(false);
+  };
+
+  const handleDownloadBackup = async () => {
+    try {
+      const backupData = {
+        products: await db.products.toArray(),
+        sales: await db.sales.toArray(),
+        suppliers: await db.suppliers.toArray(),
+        users: await db.users.toArray(),
+        expenses: await db.expenses.toArray(),
+        customers: await db.customers.toArray(),
+        exportedAt: new Date().toISOString()
+      };
+
+      const jsonStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `respaldo_kiosco_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setExportFeedback('✓ ¡Respaldo JSON descargado con éxito!');
+      setTimeout(() => setExportFeedback(null), 5000);
+    } catch (err: any) {
+      alert(`Error al respaldar: ${err.message}`);
+    }
+  };
 
   const handlePrintClosure = () => {
     let iframe = document.getElementById('print-iframe') as HTMLIFrameElement;

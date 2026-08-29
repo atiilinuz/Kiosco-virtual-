@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, Suspense, useCallback } from 'react';
-import { Store, Zap, Scan, Calculator, ShoppingCart, LogOut, Search, Filter, X, Smartphone, Wifi, WifiOff, CreditCard, CloudOff, Mail, Phone, MessageCircle, LifeBuoy, Signal, Loader2, AlertCircle, CheckCircle2, RefreshCw, Keyboard, KeyboardOff, HelpCircle } from 'lucide-react';
+import { Store, Zap, Scan, Calculator, ShoppingCart, LogOut, Search, Filter, X, Smartphone, Wifi, WifiOff, CreditCard, CloudOff, Mail, Phone, MessageCircle, LifeBuoy, Signal, Loader2, AlertCircle, CheckCircle2, RefreshCw, Keyboard, KeyboardOff, HelpCircle, Pause, Play } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncQueue } from './syncQueue';
 import Header from './components/Header';
@@ -8,6 +8,7 @@ import ProductCard from './components/ProductCard';
 import Cart from './components/Cart';
 import ErrorBoundary from './components/ErrorBoundary';
 import UserHelpModal from './components/UserHelpModal';
+import { SupabaseSyncErrorModal } from './components/SupabaseSyncErrorModal';
 import { Product, CartItem, Supplier, AppUser, LoginLog, Sale } from './types';
 import { db, initDB, dbService, auth, handleFirestoreError, OperationType } from './db';
 import { supabaseProductsService } from './services/supabaseProducts';
@@ -143,7 +144,7 @@ const AppContent: React.FC = () => {
     show: boolean;
     initialCount: number;
     currentCount: number;
-    status: 'syncing' | 'completed' | 'error';
+    status: 'syncing' | 'completed' | 'error' | 'paused';
     errorMsg?: string;
   } | null>(null);
 
@@ -1046,106 +1047,157 @@ const AppContent: React.FC = () => {
        </Suspense>
 
        <AnimatePresence>
-         {syncNotification?.show && (
-           <motion.div
-             initial={{ opacity: 0, y: 50, scale: 0.95 }}
-             animate={{ opacity: 1, y: 0, scale: 1 }}
-             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-             className="fixed bottom-24 right-4 z-50 max-w-sm w-full bg-zinc-900/95 border border-zinc-800 rounded-3xl p-5 shadow-2xl shadow-black/80 backdrop-blur-md overflow-hidden"
-           >
-             {/* Progress bar tracker */}
-             <div className="absolute top-0 left-0 w-full h-1 bg-zinc-800">
-               <motion.div 
-                 className={`h-full transition-colors duration-500 ${syncNotification.status === 'completed' ? 'bg-emerald-500' : 'bg-fuchsia-500'}`}
-                 initial={{ width: '0%' }}
-                 animate={{ 
-                   width: syncNotification.initialCount > 0 
-                     ? `${((syncNotification.initialCount - syncNotification.currentCount) / syncNotification.initialCount) * 100}%` 
-                     : '100%' 
-                 }}
-                 transition={{ duration: 0.4 }}
-               />
-             </div>
+          {syncNotification?.show && (
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              className="fixed bottom-24 right-4 z-50 max-w-sm w-full bg-zinc-900/95 border border-zinc-800 rounded-3xl p-5 shadow-2xl shadow-black/80 backdrop-blur-md overflow-hidden"
+            >
+              {/* Progress bar tracker */}
+              <div className="absolute top-0 left-0 w-full h-1 bg-zinc-800">
+                <motion.div 
+                  className={`h-full transition-colors duration-500 ${
+                    syncNotification.status === "completed" 
+                      ? "bg-emerald-500" 
+                      : syncNotification.status === "paused"
+                      ? "bg-amber-500"
+                      : "bg-fuchsia-500"
+                  }`}
+                  initial={{ width: "0%" }}
+                  animate={{ 
+                    width: syncNotification.initialCount > 0 
+                      ? `${((syncNotification.initialCount - syncNotification.currentCount) / syncNotification.initialCount) * 100}%` 
+                      : "100%" 
+                  }}
+                  transition={{ duration: 0.4 }}
+                />
+              </div>
 
-             <div className="flex gap-4 items-start pt-1">
-               {/* Status Indicator Icon */}
-               <div className="mt-1 shrink-0">
-                 {syncNotification.status === 'syncing' && (
-                   <div className="bg-fuchsia-500/10 p-2.5 rounded-2xl text-fuchsia-400">
-                     <RefreshCw size={22} className="animate-spin" />
-                   </div>
-                 )}
-                 {syncNotification.status === 'completed' && (
-                   <div className="bg-emerald-500/10 p-2.5 rounded-2xl text-emerald-400">
-                     <CheckCircle2 size={22} className="animate-bounce" />
-                   </div>
-                 )}
-                 {syncNotification.status === 'error' && (
-                   <div className="bg-red-500/10 p-2.5 rounded-2xl text-red-400">
-                     <AlertCircle size={22} />
-                   </div>
-                 )}
-               </div>
+              <div className="flex gap-4 items-start pt-1">
+                {/* Status Indicator Icon */}
+                <div className="mt-1 shrink-0">
+                  {syncNotification.status === "syncing" && (
+                    <div className="bg-fuchsia-500/10 p-2.5 rounded-2xl text-fuchsia-400">
+                      <RefreshCw size={22} className="animate-spin" />
+                    </div>
+                  )}
+                  {syncNotification.status === "paused" && (
+                    <div className="bg-amber-500/10 p-2.5 rounded-2xl text-amber-400">
+                      <Pause size={22} className="fill-amber-400/20" />
+                    </div>
+                  )}
+                  {syncNotification.status === "completed" && (
+                    <div className="bg-emerald-500/10 p-2.5 rounded-2xl text-emerald-400">
+                      <CheckCircle2 size={22} className="animate-bounce" />
+                    </div>
+                  )}
+                  {syncNotification.status === "error" && (
+                    <div className="bg-red-500/10 p-2.5 rounded-2xl text-red-400">
+                      <AlertCircle size={22} />
+                    </div>
+                  )}
+                </div>
 
-               {/* Notification Text details */}
-               <div className="flex-1 min-w-0">
-                 <div className="flex items-center justify-between">
-                   <h4 className="text-sm font-black uppercase tracking-wider text-white">
-                     {syncNotification.status === 'syncing' && "Sincronizando..."}
-                     {syncNotification.status === 'completed' && "Sincronizado"}
-                     {syncNotification.status === 'error' && "Error de Sincronización"}
-                   </h4>
-                   <button 
-                     onClick={() => setSyncNotification(null)}
-                     className="text-zinc-500 hover:text-zinc-300 transition-colors p-1 rounded-full hover:bg-zinc-800"
-                   >
-                     <X size={16} />
-                   </button>
-                 </div>
+                {/* Notification Text details */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-black uppercase tracking-wider text-white">
+                      {syncNotification.status === "syncing" && "Sincronizando..."}
+                      {syncNotification.status === "paused" && "Sincronización Pausada"}
+                      {syncNotification.status === "completed" && "Sincronizado"}
+                      {syncNotification.status === "error" && "Error de Sincronización"}
+                    </h4>
+                    <button 
+                      onClick={() => setSyncNotification(null)}
+                      className="text-zinc-500 hover:text-zinc-300 transition-colors p-1 rounded-full hover:bg-zinc-800"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
 
-                 <p className="text-xs text-zinc-400 mt-1.5 font-medium leading-relaxed">
-                   {syncNotification.status === 'syncing' && (
-                     <>
-                       Se detectó conexión restablecida. Sincronizando{' '}
-                       <span className="text-fuchsia-400 font-bold">
-                         {syncNotification.initialCount - syncNotification.currentCount}
-                       </span>{' '}
-                       de{' '}
-                       <span className="text-white font-black">
-                         {syncNotification.initialCount}
-                       </span>{' '}
-                       operaciones locales pendientes...
-                     </>
-                   )}
-                   {syncNotification.status === 'completed' && (
-                     <>
-                       ¡Conexión recuperada con éxito! Se han sincronizado todas las{' '}
-                       <span className="text-emerald-400 font-black">
-                         {syncNotification.initialCount}
-                       </span>{' '}
-                       operaciones locales pendientes.
-                     </>
-                   )}
-                   {syncNotification.status === 'error' && (
-                     <>
-                       Ocurrió un problema al subir algunas operaciones: {syncNotification.errorMsg}
-                     </>
-                   )}
-                 </p>
+                  <p className="text-xs text-zinc-400 mt-1.5 font-medium leading-relaxed">
+                    {syncNotification.status === "syncing" && (
+                      <>
+                        Se detectó conexión restablecida. Sincronizando{" "}
+                        <span className="text-fuchsia-400 font-bold">
+                          {syncNotification.initialCount - syncNotification.currentCount}
+                        </span>{" "}
+                        de{" "}
+                        <span className="text-white font-black">
+                          {syncNotification.initialCount}
+                        </span>{" "}
+                        operaciones locales pendientes...
+                      </>
+                    )}
+                    {syncNotification.status === "paused" && (
+                      <>
+                        Sincronización en la nube pausada. Todas las operaciones y ventas continúan guardándose 100% en la memoria local de tu dispositivo.
+                      </>
+                    )}
+                    {syncNotification.status === "completed" && (
+                      <>
+                        ¡Conexión recuperada con éxito! Se han sincronizado todas las{" "}
+                        <span className="text-emerald-400 font-black">
+                          {syncNotification.initialCount}
+                        </span>{" "}
+                        operaciones locales pendientes.
+                      </>
+                    )}
+                    {syncNotification.status === "error" && (
+                      <>
+                        Ocurrió un problema al subir algunas operaciones: {syncNotification.errorMsg}
+                      </>
+                    )}
+                  </p>
 
-                 {/* Visual helper showing items queue count */}
-                 {syncNotification.status === 'syncing' && (
-                   <div className="mt-3 flex gap-2">
-                     <span className="text-[10px] font-black uppercase text-zinc-400 bg-black/60 border border-zinc-800/80 px-2.5 py-1 rounded-lg animate-pulse">
-                       En Cola: {syncNotification.currentCount} restantes
-                     </span>
-                   </div>
-                 )}
-               </div>
-             </div>
-           </motion.div>
-         )}
-       </AnimatePresence>
+                  {/* Visual helper showing items queue count & action buttons */}
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    {syncNotification.status === "syncing" && (
+                      <>
+                        <span className="text-[10px] font-black uppercase text-zinc-400 bg-black/60 border border-zinc-800/80 px-2.5 py-1 rounded-lg animate-pulse">
+                          En Cola: {syncNotification.currentCount} restantes
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            syncQueue.interruptSync();
+                            setSyncNotification(prev => prev ? { ...prev, status: "paused" } : null);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all hover:scale-[1.02] cursor-pointer"
+                          title="Pausar sincronización con la nube"
+                        >
+                          <Pause size={13} className="fill-current" />
+                          <span>Pausar</span>
+                        </button>
+                      </>
+                    )}
+
+                    {syncNotification.status === "paused" && (
+                      <>
+                        <span className="text-[10px] font-black uppercase text-amber-400 bg-amber-950/40 border border-amber-500/30 px-2.5 py-1 rounded-lg">
+                          En pausa
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            syncQueue.resumeSync();
+                            setSyncNotification(prev => prev ? { ...prev, status: "syncing" } : null);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all hover:scale-[1.02] cursor-pointer"
+                          title="Reanudar sincronización con la nube"
+                        >
+                          <Play size={13} className="fill-current" />
+                          <span>Reanudar</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
        <button
          onClick={handleLogout}
@@ -1162,6 +1214,7 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <AppContent />
+      <SupabaseSyncErrorModal />
     </ErrorBoundary>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, HelpCircle, ShoppingBag, Calculator, Keyboard, MessageCircle, Phone, Mail, Sparkles, CheckCircle2, ChevronRight } from 'lucide-react';
+import { X, HelpCircle, ShoppingBag, Calculator, Keyboard, MessageCircle, Phone, Mail, Sparkles, CheckCircle2, ChevronRight, Palette } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ThemeSelector } from './ThemeSelector';
 
 interface UserHelpModalProps {
   isOpen: boolean;
@@ -8,7 +9,7 @@ interface UserHelpModalProps {
 }
 
 const UserHelpModal: React.FC<UserHelpModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'sales' | 'closure' | 'shortcuts' | 'contact'>('sales');
+  const [activeTab, setActiveTab] = useState<'sales' | 'closure' | 'shortcuts' | 'contact' | 'theme'>('sales');
 
   return (
     <AnimatePresence>
@@ -58,6 +59,7 @@ const UserHelpModal: React.FC<UserHelpModalProps> = ({ isOpen, onClose }) => {
               { id: 'sales', label: 'Cerrar Venta', icon: ShoppingBag },
               { id: 'closure', label: 'Cierre de Caja', icon: Calculator },
               { id: 'shortcuts', label: 'Teclas / Atajos', icon: Keyboard },
+              { id: 'theme', label: 'Tema y Pantalla', icon: Palette },
               { id: 'contact', label: 'Soporte Técnico', icon: MessageCircle },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -264,6 +266,13 @@ const UserHelpModal: React.FC<UserHelpModalProps> = ({ isOpen, onClose }) => {
                     🕒 <span className="text-zinc-400 font-bold">Horario de atención:</span> Lunes a Viernes de 9:00 hs a 18:00 hs
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* TAB: TEMA Y PANTALLA */}
+            {activeTab === 'theme' && (
+              <div className="space-y-4 animate-fade-in">
+                <ThemeSelector />
               </div>
             )}
           </div>

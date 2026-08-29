@@ -1,6 +1,28 @@
 import { supabase } from './supabaseClient';
 import { Product } from '../types';
 import { db } from '../db';
+import { supabaseErrorNotifier } from './supabaseErrorNotifier';
+
+async function withTimeout<T>(
+  promise: PromiseLike<T>,
+  timeoutMs = 3500,
+  errorMsg = 'Tiempo de espera agotado al conectar con Supabase (posible lentitud o fallo de red)'
+): Promise<T> {
+  let timer: any;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(errorMsg));
+    }, timeoutMs);
+  });
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    clearTimeout(timer);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
 
 export function toSupabaseRow(p: Product) {
   return {
@@ -36,7 +58,8 @@ export const supabaseProductsService = {
     try {
       if (!navigator.onLine) return [];
       console.log('[Supabase] Intentando sincronizar productos desde Supabase...');
-      const { data, error } = await supabase.from('products').select('*');
+      const res: any = await withTimeout(supabase.from('products').select('*'), 5000);
+      const { data, error } = res;
       
       if (error) {
         console.warn('[Supabase] Aviso o error consultando Supabase:', error.message);
@@ -56,7 +79,7 @@ export const supabaseProductsService = {
           console.log('[Supabase] Tabla de productos vacía en Supabase. Subiendo productos locales...');
           const rows = localProducts.map(toSupabaseRow).filter(r => r.id !== '');
           if (rows.length > 0) {
-            const { error: upsertErr } = await supabase.from('products').upsert(rows);
+            const { error: upsertErr } = await withTimeout(supabase.from('products').upsert(rows), 6000);
             if (upsertErr) {
               console.warn('[Supabase] Error al subir catálogo inicial:', upsertErr.message);
             } else {
@@ -72,28 +95,61 @@ export const supabaseProductsService = {
     }
   },
 
-  // Save/Upsert a product to Supabase
-  async saveProduct(product: Product): Promise<boolean> {
+  // Save/Upsert a product to Supabase with non-blocking error notification
+  async saveProduct(product: Product, notifyOnError = true): Promise<boolean> {
     try {
       if (!product || !product.id || !String(product.id).trim()) {
         console.warn('[Supabase] Producto o ID inválido al guardar.');
         return false;
       }
       const row = toSupabaseRow(product);
-      const { error } = await supabase.from('products').upsert(row);
-      if (error) {
-        console.warn('[Supabase] Aviso al guardar producto:', error.message);
+      const res: any = await withTimeout(
+        supabase.from('products').upsert(row),
+        3500
+      );
+
+      if (res?.error) {
+        const errorMsg = res.error.message || 'Error en respuesta de Supabase';
+        console.warn('[Supabase] Aviso al guardar producto:', errorMsg);
+        if (notifyOnError) {
+          supabaseErrorNotifier.showError({
+            operation: 'save_product',
+            itemName: product.name || `ID ${product.id}`,
+            errorMessage: errorMsg,
+            errorDetails: `Código: ${res.error.code || 'Desconocido'} • ${errorMsg}`,
+            retryAction: async () => {
+              return await supabaseProductsService.saveProduct(product, false);
+            }
+          });
+        }
         return false;
       }
       return true;
     } catch (err: any) {
-      console.warn('[Supabase] Excepción/Sin conexión al guardar producto:', err?.message || String(err));
+      const rawMsg = err?.message || String(err);
+      const isFetchErr = rawMsg.includes('Failed to fetch') || rawMsg.includes('fetch') || rawMsg.includes('NetworkError');
+      const errorMsg = isFetchErr ? 'TypeError: Failed to fetch' : rawMsg;
+      console.warn('[Supabase] Aviso al guardar producto:', rawMsg);
+
+      if (notifyOnError) {
+        supabaseErrorNotifier.showError({
+          operation: 'save_product',
+          itemName: product.name || `ID ${product.id}`,
+          errorMessage: errorMsg,
+          errorDetails: isFetchErr 
+            ? 'No se pudo comunicar con el servidor de Supabase (Posible falta de conexión a internet o bloqueo de red). Los datos están protegidos en tu almacenamiento local.' 
+            : rawMsg,
+          retryAction: async () => {
+            return await supabaseProductsService.saveProduct(product, false);
+          }
+        });
+      }
       return false;
     }
   },
 
-  // Update product in Supabase
-  async updateProduct(id: string, updates: Partial<Product>): Promise<boolean> {
+  // Update product in Supabase with non-blocking error notification
+  async updateProduct(id: string, updates: Partial<Product>, notifyOnError = true): Promise<boolean> {
     try {
       const cleanId = id ? String(id).trim() : '';
       if (!cleanId) {
@@ -115,20 +171,53 @@ export const supabaseProductsService = {
         return true;
       }
 
-      const { error } = await supabase.from('products').update(patchObj).eq('id', cleanId);
-      if (error) {
-        console.warn('[Supabase] Aviso al actualizar producto:', error.message);
+      const res: any = await withTimeout(
+        supabase.from('products').update(patchObj).eq('id', cleanId),
+        3500
+      );
+
+      if (res?.error) {
+        const errorMsg = res.error.message || 'Error en respuesta de Supabase';
+        console.warn('[Supabase] Aviso al actualizar producto:', errorMsg);
+        if (notifyOnError) {
+          supabaseErrorNotifier.showError({
+            operation: 'update_product',
+            itemName: updates.name || `ID ${cleanId}`,
+            errorMessage: errorMsg,
+            errorDetails: `Código: ${res.error.code || 'Desconocido'} • ${errorMsg}`,
+            retryAction: async () => {
+              return await supabaseProductsService.updateProduct(id, updates, false);
+            }
+          });
+        }
         return false;
       }
       return true;
     } catch (err: any) {
-      console.warn('[Supabase] Excepción/Sin conexión al actualizar producto:', err?.message || String(err));
+      const rawMsg = err?.message || String(err);
+      const isFetchErr = rawMsg.includes('Failed to fetch') || rawMsg.includes('fetch') || rawMsg.includes('NetworkError');
+      const errorMsg = isFetchErr ? 'TypeError: Failed to fetch' : rawMsg;
+      console.warn('[Supabase] Aviso al actualizar producto:', rawMsg);
+
+      if (notifyOnError) {
+        supabaseErrorNotifier.showError({
+          operation: 'update_product',
+          itemName: updates.name || `ID ${id}`,
+          errorMessage: errorMsg,
+          errorDetails: isFetchErr 
+            ? 'No se pudo comunicar con el servidor de Supabase (Posible falta de conexión a internet o bloqueo de red). Los datos están protegidos en tu almacenamiento local.' 
+            : rawMsg,
+          retryAction: async () => {
+            return await supabaseProductsService.updateProduct(id, updates, false);
+          }
+        });
+      }
       return false;
     }
   },
 
   // Delete product from Supabase
-  async deleteProduct(id: string): Promise<boolean> {
+  async deleteProduct(id: string, notifyOnError = true): Promise<boolean> {
     try {
       const cleanId = id ? String(id).trim() : '';
       if (!cleanId) {
@@ -136,33 +225,99 @@ export const supabaseProductsService = {
         return false;
       }
 
-      const { error } = await supabase.from('products').delete().eq('id', cleanId);
-      if (error) {
-        console.warn('[Supabase] Aviso al eliminar producto:', error.message);
+      const res: any = await withTimeout(
+        supabase.from('products').delete().eq('id', cleanId),
+        3500
+      );
+
+      if (res?.error) {
+        const errorMsg = res.error.message || 'Error al eliminar en Supabase';
+        console.warn('[Supabase] Aviso al eliminar producto:', errorMsg);
+        if (notifyOnError) {
+          supabaseErrorNotifier.showError({
+            operation: 'delete_product',
+            itemName: `ID ${cleanId}`,
+            errorMessage: errorMsg,
+            errorDetails: `Código: ${res.error.code || 'Desconocido'} • ${errorMsg}`,
+            retryAction: async () => {
+              return await supabaseProductsService.deleteProduct(id, false);
+            }
+          });
+        }
         return false;
       }
       return true;
     } catch (err: any) {
-      console.warn('[Supabase] Excepción/Sin conexión al eliminar producto:', err?.message || String(err));
+      const rawMsg = err?.message || String(err);
+      const isFetchErr = rawMsg.includes('Failed to fetch') || rawMsg.includes('fetch') || rawMsg.includes('NetworkError');
+      const errorMsg = isFetchErr ? 'TypeError: Failed to fetch' : rawMsg;
+      console.warn('[Supabase] Excepción al eliminar producto:', rawMsg);
+
+      if (notifyOnError) {
+        supabaseErrorNotifier.showError({
+          operation: 'delete_product',
+          itemName: `ID ${id}`,
+          errorMessage: errorMsg,
+          errorDetails: isFetchErr
+            ? 'No se pudo comunicar con el servidor de Supabase. El producto ya fue eliminado de la memoria local.'
+            : rawMsg,
+          retryAction: async () => {
+            return await supabaseProductsService.deleteProduct(id, false);
+          }
+        });
+      }
       return false;
     }
   },
 
   // Bulk save products to Supabase
-  async bulkSaveProducts(products: Product[]): Promise<boolean> {
+  async bulkSaveProducts(products: Product[], notifyOnError = true): Promise<boolean> {
     try {
       if (!products || products.length === 0) return true;
       const rows = products.map(toSupabaseRow).filter(r => r.id !== '');
       if (rows.length === 0) return true;
 
-      const { error } = await supabase.from('products').upsert(rows);
-      if (error) {
-        console.warn('[Supabase] Aviso en guardado masivo:', error.message);
+      const res: any = await withTimeout(
+        supabase.from('products').upsert(rows),
+        5000
+      );
+
+      if (res?.error) {
+        const errorMsg = res.error.message || 'Error en guardado masivo';
+        console.warn('[Supabase] Aviso en guardado masivo:', errorMsg);
+        if (notifyOnError) {
+          supabaseErrorNotifier.showError({
+            operation: 'bulk_products',
+            itemName: `${products.length} productos`,
+            errorMessage: errorMsg,
+            errorDetails: `Código: ${res.error.code || 'Desconocido'} • ${errorMsg}`,
+            retryAction: async () => {
+              return await supabaseProductsService.bulkSaveProducts(products, false);
+            }
+          });
+        }
         return false;
       }
       return true;
     } catch (err: any) {
-      console.warn('[Supabase] Excepción/Sin conexión en guardado masivo:', err?.message || String(err));
+      const rawMsg = err?.message || String(err);
+      const isFetchErr = rawMsg.includes('Failed to fetch') || rawMsg.includes('fetch') || rawMsg.includes('NetworkError');
+      const errorMsg = isFetchErr ? 'TypeError: Failed to fetch' : rawMsg;
+      console.warn('[Supabase] Excepción en guardado masivo:', rawMsg);
+
+      if (notifyOnError) {
+        supabaseErrorNotifier.showError({
+          operation: 'bulk_products',
+          itemName: `${products.length} productos`,
+          errorMessage: errorMsg,
+          errorDetails: isFetchErr 
+            ? 'No se pudo comunicar con el servidor de Supabase. Todos los productos están guardados localmente.' 
+            : rawMsg,
+          retryAction: async () => {
+            return await supabaseProductsService.bulkSaveProducts(products, false);
+          }
+        });
+      }
       return false;
     }
   },

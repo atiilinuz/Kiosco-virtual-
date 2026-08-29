@@ -59,19 +59,23 @@ export const syncDb = new OfflineSyncDatabase();
 
 class SyncQueueManager {
   private isProcessing = false;
+  private isPaused = false;
+  private isInterrupted = false;
   private listeners: (() => void)[] = [];
 
   constructor() {
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
-        console.log('[SyncQueue] Conexión online restablecida. Sincronizando con Supabase...');
-        this.processQueue();
-        this.syncAllFromRemote();
+        if (!this.isPaused) {
+          console.log('[SyncQueue] Conexión online restablecida. Sincronizando con Supabase...');
+          this.processQueue();
+          this.syncAllFromRemote();
+        }
       });
 
       // Intervalo periódico de sincronización automática (cada 15 segundos)
       setInterval(() => {
-        if (navigator.onLine) {
+        if (navigator.onLine && !this.isPaused) {
           this.processQueue();
         }
       }, 15000);
@@ -93,6 +97,33 @@ class SyncQueueManager {
     return this.isProcessing;
   }
 
+  isSyncPaused(): boolean {
+    return this.isPaused;
+  }
+
+  interruptSync() {
+    console.log('[SyncQueue] Sincronización interrumpida manualmente por el usuario.');
+    this.isInterrupted = true;
+    this.isPaused = true;
+    this.isProcessing = false;
+    this.notify();
+  }
+
+  pauseSync() {
+    this.isPaused = true;
+    this.notify();
+  }
+
+  resumeSync() {
+    console.log('[SyncQueue] Reanudando sincronización con Supabase...');
+    this.isPaused = false;
+    this.isInterrupted = false;
+    this.notify();
+    if (navigator.onLine) {
+      this.processQueue();
+    }
+  }
+
   async getPendingCount(): Promise<number> {
     try {
       const salesCount = await syncDb.pendingSales.count();
@@ -106,7 +137,7 @@ class SyncQueueManager {
 
   // Descarga e integra cambios bidireccionales desde Supabase
   async syncAllFromRemote() {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine || this.isPaused) return;
     try {
       await Promise.all([
         supabaseProductsService.syncProductsFromSupabase(),
@@ -129,7 +160,7 @@ class SyncQueueManager {
       console.log(`[SyncQueue] Venta registrada en cola de sincronización: ${sale.id}`);
       this.notify();
 
-      if (navigator.onLine) {
+      if (navigator.onLine && !this.isPaused) {
         this.processQueue();
       }
     } catch (error) {
@@ -157,7 +188,7 @@ class SyncQueueManager {
       console.log(`[SyncQueue] Cambio de producto encolado: ${productId} (${action})`);
       this.notify();
 
-      if (navigator.onLine) {
+      if (navigator.onLine && !this.isPaused) {
         this.processQueue();
       }
     } catch (error) {
@@ -166,7 +197,7 @@ class SyncQueueManager {
   }
 
   async processQueue(): Promise<void> {
-    if (this.isProcessing) {
+    if (this.isProcessing || this.isPaused) {
       return;
     }
 
@@ -183,6 +214,7 @@ class SyncQueueManager {
     }
 
     this.isProcessing = true;
+    this.isInterrupted = false;
     this.notify();
 
     console.log(`[SyncQueue] Procesando cola: ${pendingSalesCount} ventas, ${pendingProductsCount} productos...`);
@@ -191,7 +223,7 @@ class SyncQueueManager {
       // 1. Procesar Cambios de Productos pendientes
       const pendingProducts = await syncDb.pendingProducts.orderBy('id').toArray();
       for (const item of pendingProducts) {
-        if (!navigator.onLine) break;
+        if (!navigator.onLine || this.isInterrupted || this.isPaused) break;
         if (!item.id) continue;
 
         await syncDb.pendingProducts.update(item.id, { status: 'syncing' });
@@ -199,16 +231,16 @@ class SyncQueueManager {
         let success = false;
         if (item.action === 'delete') {
           if (item.productId && item.productId.trim()) {
-            success = await supabaseProductsService.deleteProduct(item.productId);
+            success = await supabaseProductsService.deleteProduct(item.productId, false);
           } else {
             success = true; // Invalid ID, drop item
           }
         } else {
           const fullProd = item.productId ? await db.products.get(item.productId) : null;
           if (fullProd && fullProd.id) {
-            success = await supabaseProductsService.saveProduct(fullProd);
+            success = await supabaseProductsService.saveProduct(fullProd, false);
           } else if (item.productId && item.productData) {
-            success = await supabaseProductsService.updateProduct(item.productId, item.productData);
+            success = await supabaseProductsService.updateProduct(item.productId, item.productData, false);
           } else {
             success = true; // Drop unresolvable change
           }
@@ -228,7 +260,7 @@ class SyncQueueManager {
       // 2. Procesar Ventas pendientes
       const pendingSales = await syncDb.pendingSales.orderBy('id').toArray();
       for (const item of pendingSales) {
-        if (!navigator.onLine) break;
+        if (!navigator.onLine || this.isInterrupted || this.isPaused) break;
         if (!item.id) continue;
 
         await syncDb.pendingSales.update(item.id, { status: 'syncing' });
@@ -335,13 +367,13 @@ class SyncQueueManager {
       for (const localP of localProducts) {
         if (!remoteProdMap.has(localP.id)) {
           // Registro faltante en Supabase -> Subir
-          await supabaseProductsService.saveProduct(localP);
+          await supabaseProductsService.saveProduct(localP, false);
           pushedProducts++;
         } else {
           // Si difiere en stock o precio, forzar actualización con el estado local
           const remoteP = remoteProdMap.get(localP.id)!;
           if (remoteP.stock !== localP.stock || remoteP.price !== localP.price || remoteP.name !== localP.name) {
-            await supabaseProductsService.saveProduct(localP);
+            await supabaseProductsService.saveProduct(localP, false);
             pushedProducts++;
           }
         }
